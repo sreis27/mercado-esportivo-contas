@@ -857,7 +857,7 @@ function editConta(id) {
 async function saveConta() {
   const id = document.getElementById('editId').value;
   const payload = {
-    casa:        document.getElementById('fCasa').value.trim().toUpperCase(),
+    casa:        document.getElementById('fCasa').value.trim(),
     agente:      document.getElementById('fAgente').value.trim().toUpperCase(),
     login:       document.getElementById('fLogin').value.trim(),
     senha:       document.getElementById('fSenha').value.trim(),
@@ -890,19 +890,29 @@ async function saveConta() {
           });
         }
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/contas?id=eq.${id}`, {
+      const patchResp = await fetch(`${SUPABASE_URL}/rest/v1/contas?id=eq.${id}`, {
         method: 'PATCH', headers, body: JSON.stringify(payload)
       });
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        showToast('Erro ao salvar: ' + err, true);
+        return;
+      }
     } else {
-      await fetch(`${SUPABASE_URL}/rest/v1/contas`, {
+      const postResp = await fetch(`${SUPABASE_URL}/rest/v1/contas`, {
         method: 'POST', headers, body: JSON.stringify(payload)
       });
+      if (!postResp.ok) {
+        const err = await postResp.text();
+        showToast('Erro ao criar: ' + err, true);
+        return;
+      }
     }
     closeModal();
     showToast(id ? 'Conta atualizada!' : 'Conta criada!');
     loadContas();
   } catch(e) {
-    showToast('Erro ao salvar', true);
+    showToast('Erro: ' + e.message, true);
   }
 }
 
