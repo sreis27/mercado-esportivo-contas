@@ -486,7 +486,7 @@
     <div class="header-right">
       <div class="user-badge">usuário: <span id="headerUser"></span></div>
       <button class="sync-btn" onclick="loadContas()">↻ Atualizar</button>
-      <button class="add-btn" onclick="openModal()">+ Nova Conta</button>
+      <button class="add-btn" id="addBtn" onclick="handleAddBtn()">+ Nova Conta</button>
       <button class="logout-btn" onclick="doLogout()">Sair</button>
     </div>
   </header>
@@ -500,7 +500,7 @@
   </div>
 
 
-  <div class="filters">
+  <div class="filters" id="filters-area">
     <input type="text" class="search-input" placeholder="Buscar por casa, login, agente..." oninput="applyFilters()" id="search">
     <select class="filter-select" onchange="applyFilters()" id="filterCasa">
       <option value="">Todas as casas</option>
@@ -510,7 +510,7 @@
     <button class="filter-chip red" onclick="setStatusFilter('inativa', this)">✕ Inativas</button>
   </div>
 
-  <div class="table-wrap">
+  <div class="table-wrap" id="table-area">
     <div class="loading" id="loading"><div class="spinner"></div>Carregando contas...</div>
     <table id="tabelaContas" style="display:none">
       <thead>
@@ -564,14 +564,7 @@
       <div class="form-group">
         <label>Situação</label>
         <select id="fSituacao">
-          <option>ATIVA</option>
-          <option>INATIVA / SMS</option>
-          <option>FACIAL</option>
-          <option>LIMITADA</option>
-          <option>INATIVA</option>
-          <option>DESATIVADA</option>
-          <option>SACADA</option>
-          <option>DEPOSITAR 2,5k</option>
+          <option value="ATIVA">ATIVA</option>
         </select>
       </div>
       <div class="form-group full">
@@ -654,6 +647,21 @@ function showApp() {
 }
 
 // ── Data ──────────────────────────────────────────────
+async function loadSituacoes() {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/situacoes?select=*&order=nome`, { headers });
+  allSituacoes = await r.json();
+  // Populate situacao select
+  const sel = document.getElementById('fSituacao');
+  if (sel) {
+    sel.innerHTML = allSituacoes.map(s => `<option value="${s.nome}">${s.nome}</option>`).join('');
+  }
+}
+
+async function loadCasas() {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/casas?select=*&order=ordem.asc,nome.asc`, { headers });
+  allCasas = await r.json();
+}
+
 async function loadContas() {
   document.getElementById('loading').style.display = 'flex';
   document.getElementById('tabelaContas').style.display = 'none';
@@ -708,14 +716,47 @@ function getSituacaoClass(s) {
 }
 
 function populateCasaFilter() {
-  const casas = [...new Set(allContas.map(c => c.casa))].sort();
   const sel = document.getElementById('filterCasa');
   sel.innerHTML = '<option value="">Todas as casas</option>';
-  casas.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c; o.textContent = c;
-    sel.appendChild(o);
-  });
+
+  if (allCasas.length > 0) {
+    // Group by espelho
+    const grupos = {};
+    const semGrupo = [];
+    allCasas.filter(c => c.ativo !== false).forEach(c => {
+      if (c.espelho) {
+        if (!grupos[c.espelho]) grupos[c.espelho] = [];
+        grupos[c.espelho].push(c);
+      } else {
+        semGrupo.push(c);
+      }
+    });
+    // Add ungrouped first
+    semGrupo.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.nome; o.textContent = c.nome;
+      sel.appendChild(o);
+    });
+    // Add groups
+    Object.entries(grupos).forEach(([grupo, casas]) => {
+      const og = document.createElement('optgroup');
+      og.label = grupo;
+      casas.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.nome; o.textContent = c.nome;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+  } else {
+    // Fallback: use casas from contas
+    const casas = [...new Set(allContas.map(c => c.casa))].sort();
+    casas.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+  }
 }
 
 function setStatusFilter(val, el) {
