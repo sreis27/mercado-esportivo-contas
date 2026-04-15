@@ -184,6 +184,42 @@ select.filter-sel:focus { border-color: var(--accent); }
 .login-err { color: var(--danger); font-size: 12px; margin-bottom: 8px; min-height: 16px; }
 #app-screen { display: none; }
 
+/* CLICKABLE STATS */
+.stat-clickable { cursor: pointer; transition: all .15s; }
+.stat-clickable:hover { border-color: var(--text2); }
+.stat-clickable.active { border-color: var(--accent) !important; }
+#card-ativa.active  { border-color: var(--accent) !important; background: rgba(0,229,160,.08); }
+#card-acao.active   { border-color: var(--warn) !important; background: rgba(245,197,66,.08); }
+#card-inativa.active { border-color: var(--danger) !important; background: rgba(224,82,82,.08); }
+#card-todas.active  { border-color: var(--text2) !important; }
+
+/* GROUP PILLS BAR */
+.group-pills-bar {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  padding: 10px 24px; border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.grp-pill {
+  cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text3); transition: all .15s;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.grp-pill:hover { border-color: var(--accent); color: var(--accent); }
+.grp-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.1); }
+
+/* SIT FILTER BUTTONS */
+.sit-filters { display:flex; gap:6px; align-items:center; }
+.sit-btn {
+  cursor:pointer; font-family:var(--sans); font-size:12px; font-weight:600;
+  padding:5px 12px; border-radius:20px; border:1px solid var(--border);
+  background:var(--surface2); color:var(--text3); transition:all .15s; letter-spacing:.02em;
+}
+.sit-btn.active-filter { border-color: var(--text2); color: var(--text); }
+.sit-btn.sit-ativa.active-filter { background:rgba(0,229,160,.15); border-color:var(--accent); color:var(--accent); }
+.sit-btn.sit-acao.active-filter  { background:rgba(245,197,66,.15); border-color:var(--warn); color:var(--warn); }
+.sit-btn.sit-inativa.active-filter { background:rgba(224,82,82,.15); border-color:var(--danger); color:var(--danger); }
+
 /* TOAST */
 .toast {
   position: fixed; bottom: 24px; right: 24px; z-index: 999;
@@ -230,39 +266,32 @@ select.filter-sel:focus { border-color: var(--accent); }
       <div class="stat-label">Saldo Total</div>
       <div class="stat-val" id="st-saldo">—</div>
     </div>
-    <div class="stat">
+    <div class="stat stat-clickable" id="card-todas" onclick="setSitFilter('','todas')" title="Ver todas">
+      <div class="stat-label">Total</div>
+      <div class="stat-val" id="st-total">—</div>
+    </div>
+    <div class="stat stat-clickable" id="card-ativa" onclick="setSitFilter('ativa','card-ativa')" title="Filtrar Ativas">
       <div class="stat-label">Ativas</div>
       <div class="stat-val" id="st-ativas">—</div>
     </div>
-    <div class="stat">
+    <div class="stat stat-clickable" id="card-acao" onclick="setSitFilter('acao','card-acao')" title="Filtrar Ação">
       <div class="stat-label">⚠ Ação</div>
       <div class="stat-val warn" id="st-acao">—</div>
     </div>
-    <div class="stat">
+    <div class="stat stat-clickable" id="card-inativa" onclick="setSitFilter('inativa','card-inativa')" title="Filtrar Inativas">
       <div class="stat-label">Inativas</div>
       <div class="stat-val danger" id="st-inativas">—</div>
     </div>
-    <div class="stat">
-      <div class="stat-label">Total Contas</div>
-      <div class="stat-val" id="st-total">—</div>
-    </div>
   </div>
+  <div class="group-pills-bar" id="group-pills-bar"></div>
 
   <div class="toolbar">
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input id="search-input" placeholder="Buscar conta..." oninput="renderGroups()">
     </div>
-    <select class="filter-sel" id="fil-situacao" onchange="renderGroups()">
-      <option value="">Todas situações</option>
-      <option value="ATIVA">Ativa</option>
-      <option value="ACAO">Ação Necessária</option>
-      <option value="INATIVA">Inativa</option>
-      <option value="LIMITADA">Limitada</option>
-    </select>
-    <select class="filter-sel" id="fil-grupo" onchange="renderGroups()">
-      <option value="">Todos os grupos</option>
-    </select>
+
+
   </div>
 
   <div class="main" id="main-content"></div>
@@ -363,6 +392,39 @@ let currentUser = null;
 let allContas = [];
 let grupos = [];      // ['Principais','Espelho da Estrela', ...]
 let dragSrc = null;
+let activeSitFilter = '';
+
+let activeGrpFilter = '';
+
+function setSitFilter(val, cardId) {
+  if (activeSitFilter === val) { activeSitFilter = ''; }
+  else { activeSitFilter = val; }
+  document.querySelectorAll('.stat-clickable').forEach(b => b.classList.remove('active'));
+  if (activeSitFilter) {
+    const map = {'ativa':'card-ativa','acao':'card-acao','inativa':'card-inativa'};
+    const el = document.getElementById(map[activeSitFilter]);
+    if (el) el.classList.add('active');
+  } else {
+    document.getElementById('card-todas')?.classList.add('active');
+  }
+  renderGroups();
+}
+
+function setGrpFilter(val) {
+  activeGrpFilter = activeGrpFilter === val ? '' : val;
+  renderGrpPills();
+  renderGroups();
+}
+
+function renderGrpPills() {
+  const bar = document.getElementById('group-pills-bar');
+  if (!bar) return;
+  const allGrpsInData = [...new Set(allContas.map(c => c.grupo || 'Sem Grupo'))];
+  const toShow = [...new Set([...grupos, ...allGrpsInData])];
+  bar.innerHTML = toShow.map(g =>
+    `<span class="grp-pill${activeGrpFilter===g?' active':''}" onclick="setGrpFilter('${g.replace(/'/g,"\'")}'">${g}</span>`
+  ).join('');
+}
 
 // ── STORAGE DE GRUPOS ──────────────────────────────────────────
 function loadGrupos() {
@@ -429,7 +491,10 @@ async function init() {
     allContas = await sbGet('contas?select=*&order=ordem.asc,created_at.asc');
     updateStats();
     populateFilters();
+    renderGrpPills();
     renderGroups();
+    // Set "Total" card as default active
+    document.getElementById('card-todas')?.classList.add('active');
   } catch(e) { toast('Erro ao carregar: ' + e.message, 'err'); }
 }
 
@@ -450,27 +515,17 @@ function updateStats() {
 }
 
 // ── FILTERS ─────────────────────────────────────────────────────
-function populateFilters() {
-  const sel = document.getElementById('fil-grupo');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">Todos os grupos</option>';
-  grupos.forEach(g => {
-    const o = document.createElement('option');
-    o.value = g; o.textContent = g;
-    if (g === cur) o.selected = true;
-    sel.appendChild(o);
-  });
-}
+function populateFilters() { renderGrpPills(); }
 
 // ── RENDER ───────────────────────────────────────────────────────
 function renderGroups() {
   const search = document.getElementById('search-input').value.toLowerCase();
-  const filSit = document.getElementById('fil-situacao').value.toUpperCase();
-  const filGrp = document.getElementById('fil-grupo').value;
+  // sit filter handled by activeSitFilter
+  const filGrp = activeGrpFilter;
 
   let contas = allContas.filter(c => {
     const matchSearch = !search || [c.casa,c.agente,c.login].some(v=>(v||'').toLowerCase().includes(search));
-    const matchSit    = !filSit || normSit(c.situacao) === filSit;
+    const matchSit    = !activeSitFilter || badgeClass(c.situacao) === activeSitFilter;
     const matchGrp    = !filGrp || (c.grupo||'Sem Grupo') === filGrp;
     return matchSearch && matchSit && matchGrp;
   });
