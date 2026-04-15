@@ -221,7 +221,6 @@ select.filter-sel:focus { border-color: var(--accent); }
   <div class="topbar">
     <div class="brand">RM <span>/</span> MERCADO ESPORTIVO</div>
     <div class="user-pill">usuário: <b id="disp-user"></b></div>
-    <button class="btn" onclick="openGruposModal()">⊞ Grupos</button>
     <button class="btn primary" onclick="openModal()">+ Nova Conta</button>
     <button class="btn" onclick="doLogout()">Sair</button>
   </div>
@@ -281,7 +280,8 @@ select.filter-sel:focus { border-color: var(--accent); }
       </div>
       <div class="form-group">
         <label>Grupo</label>
-        <select id="f-grupo"></select>
+        <input id="f-grupo" list="grupos-datalist" placeholder="ex: Principais, Estrela...">
+        <datalist id="grupos-datalist"></datalist>
       </div>
     </div>
     <div class="form-row">
@@ -291,12 +291,7 @@ select.filter-sel:focus { border-color: var(--accent); }
       </div>
       <div class="form-group">
         <label>Situação</label>
-        <select id="f-situacao">
-          <option value="ATIVA">Ativa</option>
-          <option value="ACAO">Ação Necessária</option>
-          <option value="INATIVA">Inativa</option>
-          <option value="LIMITADA">Limitada</option>
-        </select>
+        <input id="f-situacao" placeholder="ex: ATIVA, INATIVA / SMS...">
       </div>
     </div>
     <div class="form-row">
@@ -438,10 +433,11 @@ async function init() {
 
 // ── STATS ───────────────────────────────────────────────────────
 function brl(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function isInativa(s) { return ['INATIVA','LIMITADA'].includes((s||'').toUpperCase()); }
+function normSit(s) { return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function isInativa(s) { const n=normSit(s); return ['INATIVA','LIMITADA'].includes(n); }
 function updateStats() {
-  const ativas   = allContas.filter(c => c.situacao?.toUpperCase() === 'ATIVA');
-  const acao     = allContas.filter(c => c.situacao?.toUpperCase() === 'ACAO');
+  const ativas   = allContas.filter(c => normSit(c.situacao) === 'ATIVA');
+  const acao     = allContas.filter(c => normSit(c.situacao) === 'ACAO');
   const inativas = allContas.filter(c => isInativa(c.situacao));
   const saldo    = allContas.filter(c => !isInativa(c.situacao)).reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
   document.getElementById('st-saldo').textContent    = brl(saldo);
@@ -472,7 +468,7 @@ function renderGroups() {
 
   let contas = allContas.filter(c => {
     const matchSearch = !search || [c.casa,c.agente,c.login].some(v=>(v||'').toLowerCase().includes(search));
-    const matchSit    = !filSit || (c.situacao||'').toUpperCase() === filSit;
+    const matchSit    = !filSit || normSit(c.situacao) === filSit;
     const matchGrp    = !filGrp || (c.grupo||'Sem Grupo') === filGrp;
     return matchSearch && matchSit && matchGrp;
   });
@@ -525,9 +521,9 @@ function renderGroups() {
 
 function badgeClass(s) {
   const m = {'ATIVA':'ativa','ACAO':'acao','INATIVA':'inativa','LIMITADA':'limitada'};
-  return m[(s||'').toUpperCase()] || 'inativa';
+  return m[normSit(s)] || 'inativa';
 }
-function badgeLabel(s) { return STATUS_LABELS[(s||'').toUpperCase()] || s; }
+function badgeLabel(s) { return STATUS_LABELS[normSit(s)] || s; }
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function makeRow(c) {
@@ -557,6 +553,7 @@ function makeRow(c) {
       <div class="actions">
         <button class="btn-icon" title="Editar" onclick="editConta('${c.id}')">✏️</button>
         <button class="btn-icon" title="Histórico" onclick="showHist('${c.id}','${esc(c.casa)}')">📋</button>
+        <button class="btn-icon" title="Excluir" onclick="confirmDelete('${c.id}','${esc(c.casa)}')">🗑</button>
       </div>
     </td>`;
 
@@ -654,16 +651,9 @@ function openModal(conta=null) {
   document.getElementById('f-saldo').value    = conta?.saldo || '';
   document.getElementById('f-obs').value      = conta?.observacoes || '';
 
-  // Populate grupo select
-  const sel = document.getElementById('f-grupo');
-  sel.innerHTML = '';
-  grupos.forEach(g => {
-    const o = document.createElement('option');
-    o.value = g; o.textContent = g;
-    if (conta?.grupo === g) o.selected = true;
-    sel.appendChild(o);
-  });
-  if (!conta) sel.value = grupos[0];
+  // Populate grupo datalist
+  populateGrupoSelectInModal();
+  document.getElementById('f-grupo').value = conta?.grupo || grupos[0] || '';
 
   document.getElementById('btn-delete').style.display = conta ? '' : 'none';
   document.getElementById('modal-conta').classList.add('open');
@@ -722,6 +712,15 @@ async function saveConta() {
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
+async function confirmDelete(id, casa) {
+  if (!confirm(`Excluir a conta "${casa}" permanentemente?`)) return;
+  try {
+    await sbDelete(`contas?id=eq.${id}`);
+    allContas = allContas.filter(c=>c.id!==id);
+    updateStats(); populateFilters(); renderGroups();
+    toast('Conta excluída', 'ok');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
 async function deleteConta() {
   const id = document.getElementById('f-id').value;
   if (!id || !confirm('Excluir esta conta permanentemente?')) return;
@@ -792,10 +791,10 @@ function removeGrupo(idx) {
 }
 
 function populateGrupoSelectInModal() {
-  const sel = document.getElementById('f-grupo');
-  const cur = sel.value;
-  sel.innerHTML='';
-  grupos.forEach(g=>{ const o=document.createElement('option'); o.value=g; o.textContent=g; if(g===cur)o.selected=true; sel.appendChild(o); });
+  const dl = document.getElementById('grupos-datalist');
+  if (!dl) return;
+  dl.innerHTML='';
+  grupos.forEach(g=>{ const o=document.createElement('option'); o.value=g; dl.appendChild(o); });
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────
