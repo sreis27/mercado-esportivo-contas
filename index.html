@@ -605,9 +605,9 @@ function makeRow(c) {
         <button class="eye-btn" onclick="togglePwd('${c.id}','${esc(c.senha||'')}')">👁</button>
       </div>
     </td>
-    <td><span class="saldo-val ${scls}">${brl(c.saldo)}</span></td>
-    <td><span class="badge ${badgeClass(c.situacao)}">${badgeLabel(c.situacao)}</span></td>
-    <td style="color:var(--text3);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.observacoes||'')}">${esc(c.observacoes||'')}</td>
+    <td><span class="saldo-val ${scls}" style="cursor:pointer" title="Clique para editar" onclick="editSaldo(this,'${c.id}',${sval})">${brl(c.saldo)}</span></td>
+    <td><span class="badge ${badgeClass(c.situacao)}" style="cursor:pointer" title="Clique para editar" onclick="editSituacao(this,'${c.id}','${esc(c.situacao||'')}')">${badgeLabel(c.situacao)}</span></td>
+    <td style="color:var(--text3);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="Clique para editar" onclick="editObs(this,'${c.id}','${esc(c.observacoes||'').replace(/'/g,\"\\'\")}'">${esc(c.observacoes||'')}</td>
     <td>
       <div class="actions">
         <button class="btn-icon" title="Editar" onclick="editConta('${c.id}')">✏️</button>
@@ -854,6 +854,81 @@ function populateGrupoSelectInModal() {
   if (!dl) return;
   dl.innerHTML='';
   grupos.forEach(g=>{ const o=document.createElement('option'); o.value=g; dl.appendChild(o); });
+}
+
+
+// ── INLINE EDIT ──────────────────────────────────────────────────
+function editSituacao(el, id, cur) {
+  const inp = document.createElement('input');
+  inp.value = cur;
+  inp.style.cssText = 'background:var(--surface2);border:1px solid var(--accent);color:var(--text);padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;width:110px;outline:none;font-family:var(--sans)';
+  el.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  async function commit() {
+    const val = inp.value.trim() || cur;
+    const conta = allContas.find(c=>c.id===id);
+    if (conta && val !== cur) {
+      try {
+        await sbPatch(`contas?id=eq.${id}`, { situacao: val, atualizado_em: new Date().toISOString(), atualizado_por: currentUser });
+        await sbPost('historico_contas', { conta_id:id, campo_alterado:'situacao', valor_anterior:cur, valor_novo:val, alterado_por:currentUser });
+        conta.situacao = val;
+        updateStats(); renderGroups();
+        toast('Situação atualizada', 'ok');
+      } catch(e) { toast('Erro: '+e.message,'err'); renderGroups(); }
+    } else { renderGroups(); }
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') inp.blur(); if(e.key==='Escape') { inp.value=cur; inp.blur(); } });
+}
+
+function editObs(el, id, cur) {
+  const inp = document.createElement('input');
+  inp.value = cur;
+  inp.style.cssText = 'background:var(--surface2);border:1px solid var(--accent);color:var(--text);padding:3px 8px;border-radius:4px;font-size:12px;width:180px;outline:none;font-family:var(--sans)';
+  el.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  async function commit() {
+    const val = inp.value.trim();
+    const conta = allContas.find(c=>c.id===id);
+    if (conta && val !== cur) {
+      try {
+        await sbPatch(`contas?id=eq.${id}`, { observacoes: val, atualizado_em: new Date().toISOString(), atualizado_por: currentUser });
+        await sbPost('historico_contas', { conta_id:id, campo_alterado:'observacoes', valor_anterior:cur, valor_novo:val, alterado_por:currentUser });
+        conta.observacoes = val;
+        renderGroups();
+        toast('Obs atualizada', 'ok');
+      } catch(e) { toast('Erro: '+e.message,'err'); renderGroups(); }
+    } else { renderGroups(); }
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') inp.blur(); if(e.key==='Escape') { inp.value=cur; inp.blur(); } });
+}
+
+function editSaldo(el, id, cur) {
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.step = '0.01';
+  inp.value = cur;
+  inp.style.cssText = 'background:var(--surface2);border:1px solid var(--accent);color:var(--accent);padding:3px 8px;border-radius:4px;font-size:13px;width:110px;outline:none;font-family:var(--mono)';
+  el.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  async function commit() {
+    const val = parseFloat(inp.value) || 0;
+    const conta = allContas.find(c=>c.id===id);
+    if (conta && val !== cur) {
+      try {
+        await sbPatch(`contas?id=eq.${id}`, { saldo: val, atualizado_em: new Date().toISOString(), atualizado_por: currentUser });
+        await sbPost('historico_contas', { conta_id:id, campo_alterado:'saldo', valor_anterior:String(cur), valor_novo:String(val), alterado_por:currentUser });
+        conta.saldo = val;
+        updateStats(); renderGroups();
+        toast('Saldo atualizado', 'ok');
+      } catch(e) { toast('Erro: '+e.message,'err'); renderGroups(); }
+    } else { renderGroups(); }
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') inp.blur(); if(e.key==='Escape') { inp.value=cur; inp.blur(); } });
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────
