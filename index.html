@@ -639,10 +639,11 @@ function doLogout() {
   document.getElementById('loginUser').value = '';
 }
 
-function showApp() {
+async function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('headerUser').textContent = currentUser;
+  await Promise.all([loadSituacoes(), loadCasas()]);
   loadContas();
 }
 
