@@ -509,13 +509,6 @@ async function sbDelete(path) {
 async function init() {
   try {
     allContas = await sbGet('contas?select=*&order=ordem.asc,created_at.asc');
-    // Migrar contas de grupos antigos para OUTRAS CASAS
-    const grpSet = new Set(DEFAULT_GRUPOS);
-    const toMigrate = allContas.filter(ct => !ct.grupo || !grpSet.has(ct.grupo) || ct.grupo === 'Sem Grupo' || ct.grupo === 'Principais');
-    for (const ct of toMigrate) {
-      ct.grupo = 'OUTRAS BOOKIES';
-      try { await sbPatch(`contas?id=eq.${ct.id}`, { grupo: 'OUTRAS BOOKIES' }); } catch(e) {}
-    }
     populateFilters();
     renderGrpPills();
     renderGroups();
