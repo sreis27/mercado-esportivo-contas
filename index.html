@@ -522,7 +522,7 @@ function updateStats(list) {
   const ativas   = src.filter(c => normSit(c.situacao) === 'ATIVA');
   const acao     = src.filter(c => { const n=normSit(c.situacao); return !n.includes('INATIVA') && !n.includes('LIMITADA') && n !== 'ATIVA'; });
   const inativas = src.filter(c => isInativa(c.situacao));
-  const saldo    = src.filter(c => !isInativa(c.situacao)).reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
+  const saldo    = src.reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
   document.getElementById('st-saldo').textContent    = brl(saldo);
   document.getElementById('st-ativas').textContent   = ativas.length;
   document.getElementById('st-acao').textContent     = acao.length;
