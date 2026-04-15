@@ -379,6 +379,7 @@ function doLogin() {
   const p = document.getElementById('l-pass').value;
   if (USERS[u] && USERS[u] === p) {
     currentUser = u.charAt(0).toUpperCase() + u.slice(1);
+    localStorage.setItem('me_user', currentUser);
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-screen').style.display = 'block';
     document.getElementById('disp-user').textContent = currentUser;
@@ -391,6 +392,7 @@ function doLogin() {
 document.getElementById('l-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 function doLogout() {
   currentUser = null;
+  localStorage.removeItem('me_user');
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('l-user').value=''; document.getElementById('l-pass').value='';
@@ -810,6 +812,19 @@ function toast(msg, type='ok') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>el.className='toast', 3000);
 }
+
+// Auto-login se sessão salva
+(function() {
+  const saved = localStorage.getItem('me_user');
+  if (saved) {
+    currentUser = saved;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+    document.getElementById('disp-user').textContent = currentUser;
+    loadGrupos();
+    init();
+  }
+})();
 </script>
 </body>
 </html>
