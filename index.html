@@ -430,8 +430,12 @@ function setGrpFilter(val) {
 function renderGrpPills() {
   const bar = document.getElementById('group-pills-bar');
   if (!bar) return;
-  // Só mostra grupos do DEFAULT_GRUPOS que têm contas — nunca mostra Sem Grupo ou outros
-  const toShow = DEFAULT_GRUPOS.filter(g => allContas.some(x => (x.grupo||'OUTRAS BOOKIES') === g));
+  // Mostra DEFAULT_GRUPOS com contas + grupos extras que existem nos dados
+  const grpsInData = [...new Set(allContas.map(x => x.grupo||'OUTRAS BOOKIES'))];
+  const toShow = [
+    ...DEFAULT_GRUPOS.filter(g => grpsInData.includes(g)),
+    ...grpsInData.filter(g => !DEFAULT_GRUPOS.includes(g))
+  ];
   bar.innerHTML = toShow.map(g => {
     const cnt = allContas.filter(x=>(x.grupo||'OUTRAS BOOKIES')===g).length;
     return `<div class="grp-pill${activeGrpFilter===g?' active':''}" onclick="setGrpFilter('${g.replace(/'/g,"\'")}')">
@@ -793,7 +797,7 @@ async function saveConta() {
     senha:       document.getElementById('f-senha').value.trim(),
     saldo:       parseFloat(document.getElementById('f-saldo').value)||0,
     observacoes: document.getElementById('f-obs').value.trim(),
-    grupo:       document.getElementById('f-grupo').value,
+    grupo:       document.getElementById('f-grupo').value.trim(),
     atualizado_em:  new Date().toISOString(),
     atualizado_por: currentUser,
   };
