@@ -386,7 +386,7 @@ const SUPA_URL = 'https://yfdrifvhsiumdxgypkjm.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmZHJpZnZoc2l1bWR4Z3lwa2ptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MzI4NDgsImV4cCI6MjA5MTUwODg0OH0.nqG8gUePvyR0ZPzx5cmEhi_IKGMZvdNa9r69_XYLcOY';
 const SVC_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmZHJpZnZoc2l1bWR4Z3lwa2ptIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTkzMjg0OCwiZXhwIjoyMDkxNTA4ODQ4fQ.s1R7Akclh0LxGkljtHaBHCSJgbU9SFL8pvQArIiXsXQ';
 const USERS = { samuel:'officedash', diego:'officedash', amaral:'officedash' };
-const DEFAULT_GRUPOS = ['BET365','BETANO','BETFAIR','ESTRELA E ESPELHOS','APOSTA GANHA E ESPELHOS','7KBET E ESPELHOS','KTO E ESPELHOS','BETFAST E ESPELHOS','OUTRAS CASAS'];
+const DEFAULT_GRUPOS = ['BET365','BETANO','BETFAIR','ESTRELA E ESPELHOS','APOSTA GANHA E ESPELHOS','7KBET E ESPELHOS','KTO E ESPELHOS','BETFAST E ESPELHOS','OUTRAS BOOKIES'];
 const STATUS_LABELS = { ATIVA:'Ativa', ACAO:'Ação', INATIVA:'Inativa', LIMITADA:'Limitada' };
 
 let currentUser = null;
@@ -430,10 +430,10 @@ function setGrpFilter(val) {
 function renderGrpPills() {
   const bar = document.getElementById('group-pills-bar');
   if (!bar) return;
-  const allGrpsInData = [...new Set(allContas.map(c => c.grupo || 'Sem Grupo'))];
-  const toShow = [...new Set([...grupos, ...allGrpsInData])];
+  // Só mostra grupos do DEFAULT_GRUPOS que têm contas — nunca mostra Sem Grupo ou outros
+  const toShow = DEFAULT_GRUPOS.filter(g => allContas.some(x => (x.grupo||'OUTRAS BOOKIES') === g));
   bar.innerHTML = toShow.map(g => {
-    const cnt = allContas.filter(x=>(x.grupo||'Sem Grupo')===g).length;
+    const cnt = allContas.filter(x=>(x.grupo||'OUTRAS BOOKIES')===g).length;
     return `<div class="grp-pill${activeGrpFilter===g?' active':''}" onclick="setGrpFilter('${g.replace(/'/g,"\'")}')">
       <div class="grp-pill-label">${g}</div>
       <div class="grp-pill-count">${cnt}</div>
@@ -507,10 +507,10 @@ async function init() {
     allContas = await sbGet('contas?select=*&order=ordem.asc,created_at.asc');
     // Migrar contas de grupos antigos para OUTRAS CASAS
     const grpSet = new Set(DEFAULT_GRUPOS);
-    const toMigrate = allContas.filter(ct => ct.grupo && !grpSet.has(ct.grupo));
+    const toMigrate = allContas.filter(ct => !ct.grupo || !grpSet.has(ct.grupo) || ct.grupo === 'Sem Grupo' || ct.grupo === 'Principais');
     for (const ct of toMigrate) {
-      ct.grupo = 'OUTRAS CASAS';
-      try { await sbPatch(`contas?id=eq.${ct.id}`, { grupo: 'OUTRAS CASAS' }); } catch(e) {}
+      ct.grupo = 'OUTRAS BOOKIES';
+      try { await sbPatch(`contas?id=eq.${ct.id}`, { grupo: 'OUTRAS BOOKIES' }); } catch(e) {}
     }
     populateFilters();
     renderGrpPills();
@@ -549,22 +549,28 @@ function renderGroups() {
   let contas = allContas.filter(c => {
     const matchSearch = !search || [c.casa,c.agente,c.login].some(v=>(v||'').toLowerCase().includes(search));
     const matchSit    = !activeSitFilter || badgeClass(c.situacao) === activeSitFilter;
-    const matchGrp    = !filGrp || (c.grupo||'Sem Grupo') === filGrp;
+    const matchGrp    = !filGrp || (c.grupo||'OUTRAS BOOKIES') === filGrp;
     return matchSearch && matchSit && matchGrp;
   });
 
   // Determine which groups to show
-  const grpSet = filGrp ? [filGrp] : grupos;
-  // Also include any group in data not in grupos list
-  const extraGrps = [...new Set(contas.map(c=>c.grupo||'Sem Grupo'))].filter(g=>!grupos.includes(g));
-  const allGrps = [...new Set([...grpSet, ...extraGrps])];
+  let allGrps;
+  if (filGrp) {
+    allGrps = [filGrp];
+  } else {
+    // Show all groups that have matching accounts, in order of DEFAULT_GRUPOS
+    const grpsInData = new Set(contas.map(c => c.grupo || 'OUTRAS BOOKIES'));
+    allGrps = DEFAULT_GRUPOS.filter(g => grpsInData.has(g));
+    // Add any extra groups not in default list
+    [...grpsInData].filter(g => !DEFAULT_GRUPOS.includes(g)).forEach(g => allGrps.push(g));
+  }
 
   const main = document.getElementById('main-content');
   main.innerHTML = '';
   updateStats(contas);
 
   allGrps.forEach(grp => {
-    let grpContas = contas.filter(c=>(c.grupo||'Sem Grupo')===grp);
+    let grpContas = contas.filter(c=>(c.grupo||'OUTRAS BOOKIES')===grp);
     if (sortCol) {
       grpContas = [...grpContas].sort((a,b) => {
         let av = a[sortCol]||'', bv = b[sortCol]||'';
@@ -690,8 +696,8 @@ async function handleDrop(targetRow) {
   if (srcConta) srcConta.grupo = newGrp;
 
   // Reorder within group: insert srcConta before targetConta
-  const grpContas = allContas.filter(c=>(c.grupo||'Sem Grupo')===newGrp);
-  const others    = allContas.filter(c=>(c.grupo||'Sem Grupo')!==newGrp);
+  const grpContas = allContas.filter(c=>(c.grupo||'OUTRAS BOOKIES')===newGrp);
+  const others    = allContas.filter(c=>(c.grupo||'OUTRAS BOOKIES')!==newGrp);
 
   const srcIdx = grpContas.findIndex(c=>c.id===srcId);
   const tgtIdx = grpContas.findIndex(c=>c.id===tgtId);
@@ -879,10 +885,10 @@ function addGrupo() {
 
 function removeGrupo(idx) {
   const g = grupos[idx];
-  const hasContas = allContas.some(c=>(c.grupo||'Sem Grupo')===g);
+  const hasContas = allContas.some(c=>(c.grupo||'OUTRAS BOOKIES')===g);
   if (hasContas && !confirm(`O grupo "${g}" tem contas associadas. Elas irão para "Sem Grupo". Confirmar?`)) return;
   // Move contas to sem grupo
-  allContas.forEach(c=>{ if((c.grupo||'Sem Grupo')===g) c.grupo='Sem Grupo'; });
+  allContas.forEach(c=>{ if((c.grupo||'OUTRAS BOOKIES')===g) c.grupo='Sem Grupo'; });
   grupos.splice(idx,1);
   saveGruposStorage();
   renderGruposList(); populateFilters(); renderGroups();
