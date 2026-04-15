@@ -607,7 +607,7 @@ function makeRow(c) {
     </td>
     <td><span class="saldo-val ${scls}" style="cursor:pointer" title="Clique para editar" onclick="editSaldo(this,'${c.id}',${sval})">${brl(c.saldo)}</span></td>
     <td><span class="badge ${badgeClass(c.situacao)}" style="cursor:pointer" title="Clique para editar" onclick="editSituacao(this,'${c.id}','${esc(c.situacao||'')}')">${badgeLabel(c.situacao)}</span></td>
-    <td style="color:var(--text3);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="Clique para editar" onclick="editObs(this,'${c.id}','${esc(c.observacoes||'').replace(/'/g,\"\\'\")}'">${esc(c.observacoes||'')}</td>
+    <td class="obs-cell" style="color:var(--text3);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="Clique para editar" data-id="${c.id}" data-obs="${esc(c.observacoes||'')}"><span>${esc(c.observacoes||'')}</span></td>
     <td>
       <div class="actions">
         <button class="btn-icon" title="Editar" onclick="editConta('${c.id}')">✏️</button>
@@ -622,6 +622,14 @@ function makeRow(c) {
   tr.addEventListener('dragover', e => { e.preventDefault(); tr.classList.add('drag-over'); });
   tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
   tr.addEventListener('drop', e => { e.preventDefault(); handleDrop(tr); });
+
+  // obs inline edit via delegation
+  const obsTd = tr.querySelector('.obs-cell');
+  if (obsTd) {
+    obsTd.addEventListener('click', () => {
+      editObs(obsTd, obsTd.dataset.id, obsTd.dataset.obs || '');
+    });
+  }
 
   return tr;
 }
