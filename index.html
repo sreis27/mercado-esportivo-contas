@@ -195,18 +195,21 @@ select.filter-sel:focus { border-color: var(--accent); }
 
 /* GROUP PILLS BAR */
 .group-pills-bar {
-  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
-  padding: 10px 24px; border-bottom: 1px solid var(--border);
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 12px 24px; border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 .grp-pill {
-  cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 700;
-  padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
-  background: var(--surface2); color: var(--text3); transition: all .15s;
-  letter-spacing: .06em; text-transform: uppercase;
+  cursor: pointer; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 14px; transition: all .15s;
+  display: flex; flex-direction: column; gap: 2px; min-width: 90px;
 }
-.grp-pill:hover { border-color: var(--accent); color: var(--accent); }
-.grp-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,.1); }
+.grp-pill:hover { border-color: var(--text2); }
+.grp-pill.active { border-color: var(--accent); background: rgba(0,229,160,.08); }
+.grp-pill-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; font-family: var(--mono); }
+.grp-pill-count { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--text); }
+.grp-pill.active .grp-pill-count { color: var(--accent); }
+.grp-pill.active .grp-pill-label { color: var(--accent2); }
 
 /* SIT FILTER BUTTONS */
 .sit-filters { display:flex; gap:6px; align-items:center; }
@@ -392,6 +395,16 @@ let currentUser = null;
 let allContas = [];
 let grupos = [];      // ['Principais','Espelho da Estrela', ...]
 let dragSrc = null;
+let sortCol = ''; let sortDir = 1;
+
+function setSort(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = 1; }
+  document.querySelectorAll('[id^="sort-"]').forEach(el => el.textContent = '');
+  const el = document.getElementById('sort-' + col);
+  if (el) el.textContent = sortDir === 1 ? ' ↑' : ' ↓';
+  renderGroups();
+}
 let activeSitFilter = '';
 
 let activeGrpFilter = '';
@@ -421,9 +434,13 @@ function renderGrpPills() {
   if (!bar) return;
   const allGrpsInData = [...new Set(allContas.map(c => c.grupo || 'Sem Grupo'))];
   const toShow = [...new Set([...grupos, ...allGrpsInData])];
-  bar.innerHTML = toShow.map(g =>
-    `<span class="grp-pill${activeGrpFilter===g?' active':''}" onclick="setGrpFilter('${g.replace(/'/g,"\'")}'">${g}</span>`
-  ).join('');
+  bar.innerHTML = toShow.map(g => {
+    const cnt = allContas.filter(x=>(x.grupo||'Sem Grupo')===g).length;
+    return `<div class="grp-pill${activeGrpFilter===g?' active':''}" onclick="setGrpFilter('${g.replace(/'/g,"\'")}')">
+      <div class="grp-pill-label">${g}</div>
+      <div class="grp-pill-count">${cnt}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── STORAGE DE GRUPOS ──────────────────────────────────────────
@@ -501,17 +518,18 @@ async function init() {
 // ── STATS ───────────────────────────────────────────────────────
 function brl(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function normSit(s) { return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
-function isInativa(s) { const n=normSit(s); return ['INATIVA','LIMITADA'].includes(n); }
-function updateStats() {
-  const ativas   = allContas.filter(c => normSit(c.situacao) === 'ATIVA');
-  const acao     = allContas.filter(c => { const n=normSit(c.situacao); return !n.includes('INATIVA') && !n.includes('LIMITADA') && n !== 'ATIVA'; });
-  const inativas = allContas.filter(c => isInativa(c.situacao));
-  const saldo    = allContas.filter(c => !isInativa(c.situacao)).reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
+function isInativa(s) { const n=normSit(s); return n.includes('INATIVA') || n.includes('LIMITADA'); }
+function updateStats(list) {
+  const src = list || allContas;
+  const ativas   = src.filter(c => normSit(c.situacao) === 'ATIVA');
+  const acao     = src.filter(c => { const n=normSit(c.situacao); return !n.includes('INATIVA') && !n.includes('LIMITADA') && n !== 'ATIVA'; });
+  const inativas = src.filter(c => isInativa(c.situacao));
+  const saldo    = src.filter(c => !isInativa(c.situacao)).reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
   document.getElementById('st-saldo').textContent    = brl(saldo);
   document.getElementById('st-ativas').textContent   = ativas.length;
   document.getElementById('st-acao').textContent     = acao.length;
   document.getElementById('st-inativas').textContent = inativas.length;
-  document.getElementById('st-total').textContent    = allContas.length;
+  document.getElementById('st-total').textContent    = src.length;
 }
 
 // ── FILTERS ─────────────────────────────────────────────────────
@@ -538,10 +556,19 @@ function renderGroups() {
 
   const main = document.getElementById('main-content');
   main.innerHTML = '';
+  updateStats(contas);
 
   allGrps.forEach(grp => {
-    const grpContas = contas.filter(c=>(c.grupo||'Sem Grupo')===grp);
-    if (!grpContas.length && filGrp) return;
+    let grpContas = contas.filter(c=>(c.grupo||'Sem Grupo')===grp);
+    if (sortCol) {
+      grpContas = [...grpContas].sort((a,b) => {
+        let av = a[sortCol]||'', bv = b[sortCol]||'';
+        if (sortCol==='saldo') { av=parseFloat(av)||0; bv=parseFloat(bv)||0; }
+        else { av=String(av).toLowerCase(); bv=String(bv).toLowerCase(); }
+        return av>bv ? sortDir : av<bv ? -sortDir : 0;
+      });
+    }
+    if (!grpContas.length) return; // nunca mostrar grupos vazios
 
     const block = document.createElement('div');
     block.className = 'group-block';
@@ -560,9 +587,9 @@ function renderGroups() {
             <th>Agente</th>
             <th>Login</th>
             <th>Senha</th>
-            <th>Saldo</th>
-            <th>Situação</th>
-            <th>Obs</th>
+            <th class="sortable" onclick="setSort('saldo')" style="cursor:pointer;user-select:none">Saldo <span id="sort-saldo"></span></th>
+            <th class="sortable" onclick="setSort('situacao')" style="cursor:pointer;user-select:none">Situação <span id="sort-situacao"></span></th>
+            <th class="sortable" onclick="setSort('observacoes')" style="cursor:pointer;user-select:none">Obs <span id="sort-observacoes"></span></th>
             <th></th>
           </tr>
         </thead>
