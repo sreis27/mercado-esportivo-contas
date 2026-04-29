@@ -258,6 +258,7 @@ select.filter-sel:focus { border-color: var(--accent); }
   <div class="topbar">
     <div class="brand">RM <span>/</span> MERCADO ESPORTIVO</div>
     <div class="user-pill">usuário: <b id="disp-user"></b></div>
+    <button class="btn" onclick="openGruposModal()">⚙ Gerenciar Grupos</button>
     <button class="btn primary" onclick="openModal()">+ Nova Conta</button>
     <button class="btn" onclick="doLogout()">Sair</button>
   </div>
@@ -452,7 +453,11 @@ function renderGrpPills() {
 function loadGrupos() {
   try { grupos = JSON.parse(localStorage.getItem('me_grupos') || '[]'); } catch(e) { grupos = []; }
   grupos = [...new Set(grupos)]; // deduplicate
-  if (!grupos.length) grupos = ['Sem Grupo'];
+  if (!grupos.length) grupos = [...DEFAULT_GRUPOS];
+  // OUTRAS BOOKIES é catch-all e deve sempre existir e ficar por último
+  grupos = grupos.filter(g => g !== 'OUTRAS BOOKIES' && g !== 'Sem Grupo');
+  grupos.push('OUTRAS BOOKIES');
+  saveGruposStorage();
 }
 function saveGruposStorage() {
   localStorage.setItem('me_grupos', JSON.stringify(grupos));
@@ -872,20 +877,68 @@ function openGruposModal() {
   document.getElementById('modal-grupos').classList.add('open');
 }
 
+let dragGrpSrc = null;
 function renderGruposList() {
   const el = document.getElementById('grupos-list');
-  el.innerHTML = grupos.map((g,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px">
-      <span style="flex:1;font-size:13px">${esc(g)}</span>
-      ${i>0?`<button class="btn-icon" onclick="removeGrupo(${i})" title="Remover">🗑</button>`:''}
-    </div>`).join('');
+  el.innerHTML = grupos.map((g,i)=>{
+    const isOutras = g === 'OUTRAS BOOKIES';
+    return `
+    <div class="grupo-row" draggable="${isOutras?'false':'true'}" data-idx="${i}"
+         ondragstart="dragGrpSrc=${i}" ondragover="event.preventDefault()" ondrop="dropGrupo(${i})"
+         style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;${isOutras?'opacity:0.7':'cursor:grab'}">
+      <span style="color:var(--text3);font-size:11px;width:14px">${isOutras?'':'⋮⋮'}</span>
+      <span class="grupo-nome" style="flex:1;font-size:13px" ondblclick="${isOutras?'':`editGrupoNome(${i})`}">${esc(g)}</span>
+      ${isOutras?'<span style="color:var(--text3);font-size:10px">(catch-all automático)</span>':`
+        <button class="btn-icon" onclick="editGrupoNome(${i})" title="Renomear">✎</button>
+        <button class="btn-icon" onclick="removeGrupo(${i})" title="Remover">🗑</button>
+      `}
+    </div>`;
+  }).join('');
+}
+
+function dropGrupo(targetIdx) {
+  if (dragGrpSrc === null || dragGrpSrc === targetIdx) return;
+  if (grupos[dragGrpSrc] === 'OUTRAS BOOKIES' || grupos[targetIdx] === 'OUTRAS BOOKIES') return;
+  const [moved] = grupos.splice(dragGrpSrc, 1);
+  grupos.splice(targetIdx, 0, moved);
+  dragGrpSrc = null;
+  saveGruposStorage();
+  renderGruposList();
+  populateFilters();
+  renderGroups();
+}
+
+function editGrupoNome(idx) {
+  const atual = grupos[idx];
+  const novo = prompt(`Renomear grupo "${atual}":`, atual);
+  if (!novo || novo.trim() === '' || novo.trim() === atual) return;
+  const novoNome = novo.trim();
+  if (grupos.includes(novoNome)) { toast('Já existe um grupo com esse nome', 'err'); return; }
+  // Atualiza nome em todas as contas locais
+  allContas.forEach(c => { if ((c.grupo||'OUTRAS BOOKIES') === atual) c.grupo = novoNome; });
+  // Persiste no Supabase em batch
+  (async () => {
+    try {
+      const afetadas = allContas.filter(c => c.grupo === novoNome);
+      for (const c of afetadas) {
+        await sbPatch(`contas?id=eq.${c.id}`, { grupo: novoNome });
+      }
+      grupos[idx] = novoNome;
+      saveGruposStorage();
+      renderGruposList(); populateFilters(); renderGroups();
+      toast('Grupo renomeado', 'ok');
+    } catch(e) { toast('Erro: ' + e.message, 'err'); }
+  })();
 }
 
 function addGrupo() {
   const v = document.getElementById('new-grupo-input').value.trim();
   if (!v) return;
   if (grupos.includes(v)) { toast('Grupo já existe', 'err'); return; }
-  grupos.push(v);
+  // Insere antes de OUTRAS BOOKIES (que sempre fica por último)
+  const idxOutras = grupos.indexOf('OUTRAS BOOKIES');
+  if (idxOutras >= 0) grupos.splice(idxOutras, 0, v);
+  else grupos.push(v);
   saveGruposStorage();
   document.getElementById('new-grupo-input').value='';
   renderGruposList();
@@ -896,14 +949,25 @@ function addGrupo() {
 
 function removeGrupo(idx) {
   const g = grupos[idx];
+  if (g === 'OUTRAS BOOKIES') { toast('Não é possível remover OUTRAS BOOKIES', 'err'); return; }
   const hasContas = allContas.some(c=>(c.grupo||'OUTRAS BOOKIES')===g);
-  if (hasContas && !confirm(`O grupo "${g}" tem contas associadas. Elas irão para "Sem Grupo". Confirmar?`)) return;
-  // Move contas to sem grupo
-  allContas.forEach(c=>{ if((c.grupo||'OUTRAS BOOKIES')===g) c.grupo='Sem Grupo'; });
-  grupos.splice(idx,1);
-  saveGruposStorage();
-  renderGruposList(); populateFilters(); renderGroups();
-  toast('Grupo removido', 'ok');
+  if (hasContas && !confirm(`O grupo "${g}" tem contas associadas. Elas irão para "OUTRAS BOOKIES". Confirmar?`)) return;
+  // Move contas pra OUTRAS BOOKIES (catch-all automático)
+  (async () => {
+    try {
+      const afetadas = allContas.filter(c => (c.grupo||'OUTRAS BOOKIES') === g);
+      for (const c of afetadas) {
+        c.grupo = 'OUTRAS BOOKIES';
+        await sbPatch(`contas?id=eq.${c.id}`, { grupo: 'OUTRAS BOOKIES' });
+      }
+      grupos.splice(idx,1);
+      // Garante que OUTRAS BOOKIES exista
+      if (!grupos.includes('OUTRAS BOOKIES')) grupos.push('OUTRAS BOOKIES');
+      saveGruposStorage();
+      renderGruposList(); populateFilters(); renderGroups();
+      toast('Grupo removido', 'ok');
+    } catch(e) { toast('Erro: ' + e.message, 'err'); }
+  })();
 }
 
 function populateGrupoSelectInModal() {
