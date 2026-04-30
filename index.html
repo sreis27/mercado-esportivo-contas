@@ -394,7 +394,7 @@ const SUPA_URL = 'https://yfdrifvhsiumdxgypkjm.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmZHJpZnZoc2l1bWR4Z3lwa2ptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MzI4NDgsImV4cCI6MjA5MTUwODg0OH0.nqG8gUePvyR0ZPzx5cmEhi_IKGMZvdNa9r69_XYLcOY';
 const SVC_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmZHJpZnZoc2l1bWR4Z3lwa2ptIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTkzMjg0OCwiZXhwIjoyMDkxNTA4ODQ4fQ.s1R7Akclh0LxGkljtHaBHCSJgbU9SFL8pvQArIiXsXQ';
 const USERS = { samuel:'officedash', diego:'officedash', amaral:'officedash' };
-const DEFAULT_GRUPOS = ['BET365','BETANO','BETFAIR','ESTRELA E ESPELHOS','APOSTA GANHA E ESPELHOS','7KBET E ESPELHOS','KTO E ESPELHOS','BETFAST E ESPELHOS','OUTRAS BOOKIES'];
+const DEFAULT_GRUPOS = []; // legacy — não usado mais. Grupos vêm de grupos_contas no Supabase.
 const STATUS_LABELS = { ATIVA:'Ativa', ACAO:'Ação', INATIVA:'Inativa', LIMITADA:'Limitada' };
 
 let currentUser = null;
@@ -466,7 +466,7 @@ function grpDragStart(e, nome) {
   grpDragSrcName = nome;
   e.dataTransfer.effectAllowed = 'move';
 }
-function grpDrop(e, targetNome) {
+async function grpDrop(e, targetNome) {
   e.preventDefault();
   if (!grpDragSrcName || grpDragSrcName === targetNome) return;
   if (grpDragSrcName === 'OUTRAS BOOKIES' || targetNome === 'OUTRAS BOOKIES') return;
@@ -476,8 +476,8 @@ function grpDrop(e, targetNome) {
   const [moved] = grupos.splice(srcIdx, 1);
   grupos.splice(tgtIdx, 0, moved);
   grpDragSrcName = null;
-  saveGruposStorage();
   renderGrpPills();
+  await saveGruposOrdem();
 }
 
 async function grpEditNome(atual) {
@@ -487,6 +487,13 @@ async function grpEditNome(atual) {
   const novoNome = novo.trim();
   if (grupos.includes(novoNome)) { toast('Já existe um grupo com esse nome', 'err'); return; }
   try {
+    // 1. Atualiza nome do grupo na tabela grupos_contas
+    const grupoId = _gruposIdMap[atual];
+    if (grupoId) await sbPatch(`grupos_contas?id=eq.${grupoId}`, { nome: novoNome });
+    _gruposIdMap[novoNome] = grupoId;
+    delete _gruposIdMap[atual];
+
+    // 2. Atualiza referências nas contas
     const afetadas = allContas.filter(c => (c.grupo||'OUTRAS BOOKIES') === atual);
     for (const c of afetadas) {
       c.grupo = novoNome;
@@ -495,7 +502,6 @@ async function grpEditNome(atual) {
     const idx = grupos.indexOf(atual);
     if (idx >= 0) grupos[idx] = novoNome;
     if (activeGrpFilter === atual) activeGrpFilter = novoNome;
-    saveGruposStorage();
     renderGrpPills();
     populateGrupoSelectInModal();
     toast('Grupo renomeado', 'ok');
@@ -510,51 +516,96 @@ async function grpRemove(g) {
     : `Apagar "${g}"?`;
   if (!confirm(msg)) return;
   try {
+    // 1. Move contas pra OUTRAS BOOKIES
     const afetadas = allContas.filter(c => (c.grupo||'OUTRAS BOOKIES') === g);
     for (const c of afetadas) {
       c.grupo = 'OUTRAS BOOKIES';
       await sbPatch(`contas?id=eq.${c.id}`, { grupo: 'OUTRAS BOOKIES' });
     }
+    // 2. Apaga o registro do grupo
+    const grupoId = _gruposIdMap[g];
+    if (grupoId) await sbDelete(`grupos_contas?id=eq.${grupoId}`);
+    delete _gruposIdMap[g];
+
     grupos = grupos.filter(x => x !== g);
     if (!grupos.includes('OUTRAS BOOKIES')) grupos.push('OUTRAS BOOKIES');
     if (activeGrpFilter === g) activeGrpFilter = '';
-    saveGruposStorage();
     renderGrpPills(); renderGroups();
     toast('Grupo apagado', 'ok');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
-function grpAddInline() {
+async function grpAddInline() {
   const nome = prompt('Nome do novo grupo:');
   if (!nome || !nome.trim()) return;
   const v = nome.trim();
   if (grupos.includes(v)) { toast('Grupo já existe', 'err'); return; }
-  // Insere antes de OUTRAS BOOKIES
-  const idxOutras = grupos.indexOf('OUTRAS BOOKIES');
-  if (idxOutras >= 0) grupos.splice(idxOutras, 0, v);
-  else grupos.push(v);
-  saveGruposStorage();
-  renderGrpPills();
-  populateGrupoSelectInModal();
-  toast('Grupo adicionado', 'ok');
+  try {
+    // Calcula a próxima ordem (última posição antes de OUTRAS BOOKIES)
+    const idxOutras = grupos.indexOf('OUTRAS BOOKIES');
+    const ordem = idxOutras >= 0 ? idxOutras + 1 : grupos.length + 1;
+    const inserted = await sbPostReturn('grupos_contas', { nome: v, ordem: ordem });
+    if (inserted && inserted[0]) _gruposIdMap[v] = inserted[0].id;
+
+    if (idxOutras >= 0) grupos.splice(idxOutras, 0, v);
+    else grupos.push(v);
+
+    renderGrpPills();
+    populateGrupoSelectInModal();
+    toast('Grupo adicionado', 'ok');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
 // ── STORAGE DE GRUPOS ──────────────────────────────────────────
-function loadGrupos() {
-  try { grupos = JSON.parse(localStorage.getItem('me_grupos') || '[]'); } catch(e) { grupos = []; }
-  grupos = [...new Set(grupos)]; // deduplicate
-  if (!grupos.length) grupos = [...DEFAULT_GRUPOS];
-  // OUTRAS BOOKIES é catch-all e deve sempre existir e ficar por último
-  grupos = grupos.filter(g => g !== 'OUTRAS BOOKIES' && g !== 'Sem Grupo');
-  grupos.push('OUTRAS BOOKIES');
-  saveGruposStorage();
+// ── GRUPOS: CRUD via Supabase ──────────────────────────────────
+// Os grupos ficam na tabela grupos_contas (id, nome, ordem). Antes ficavam em localStorage,
+// o que causava cada navegador ter sua própria versão. Agora todo mundo vê o mesmo.
+let _gruposIdMap = {}; // nome -> id (pra updates/deletes)
+
+async function loadGrupos() {
+  // Limpa lixo de versão antiga (grupos no localStorage). Agora vem do Supabase.
+  try { localStorage.removeItem('me_grupos'); } catch(e) {}
+
+  try {
+    const rows = await sbGet('grupos_contas?select=id,nome,ordem&order=ordem');
+    grupos = rows.map(r => r.nome);
+    _gruposIdMap = Object.fromEntries(rows.map(r => [r.nome, r.id]));
+  } catch(e) {
+    console.error('Erro loadGrupos:', e);
+    grupos = [];
+    _gruposIdMap = {};
+  }
+  // Garantir que OUTRAS BOOKIES exista e fique sempre por último
+  if (!grupos.includes('OUTRAS BOOKIES')) {
+    try {
+      const inserted = await sbPostReturn('grupos_contas', { nome: 'OUTRAS BOOKIES', ordem: 999 });
+      if (inserted && inserted[0]) {
+        grupos.push('OUTRAS BOOKIES');
+        _gruposIdMap['OUTRAS BOOKIES'] = inserted[0].id;
+      }
+    } catch(e) { console.error('Erro criando OUTRAS BOOKIES:', e); }
+  } else {
+    grupos = grupos.filter(g => g !== 'OUTRAS BOOKIES');
+    grupos.push('OUTRAS BOOKIES');
+  }
 }
-function saveGruposStorage() {
-  localStorage.setItem('me_grupos', JSON.stringify(grupos));
+
+// Salvar ordem completa (chamado depois de drag-and-drop)
+async function saveGruposOrdem() {
+  // Re-grava ordem de cada grupo conforme posição no array
+  for (let i = 0; i < grupos.length; i++) {
+    const nome = grupos[i];
+    const id = _gruposIdMap[nome];
+    if (!id) continue;
+    const novaOrdem = nome === 'OUTRAS BOOKIES' ? 999 : i + 1;
+    try {
+      await sbPatch(`grupos_contas?id=eq.${id}`, { ordem: novaOrdem });
+    } catch(e) { console.error('Erro salvando ordem:', e); }
+  }
 }
 
 // ── AUTH ───────────────────────────────────────────────────────
-function doLogin() {
+async function doLogin() {
   const u = document.getElementById('l-user').value.trim().toLowerCase();
   const p = document.getElementById('l-pass').value;
   if (USERS[u] && USERS[u] === p) {
@@ -563,7 +614,7 @@ function doLogin() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-screen').style.display = 'block';
     document.getElementById('disp-user').textContent = currentUser;
-    loadGrupos();
+    await loadGrupos();
     init();
   } else {
     document.getElementById('l-err').textContent = 'Usuário ou senha inválidos.';
@@ -597,6 +648,11 @@ async function sbPatch(path, body) {
 async function sbPost(path, body) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { method:'POST', headers: headers(true), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(await r.text());
+}
+async function sbPostReturn(path, body) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { method:'POST', headers: { ...headers(true), 'Prefer': 'return=representation' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 async function sbDelete(path) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { method:'DELETE', headers: headers(true) });
@@ -653,11 +709,11 @@ function renderGroups() {
   if (filGrp) {
     allGrps = [filGrp];
   } else {
-    // Show all groups that have matching accounts, in order of DEFAULT_GRUPOS
+    // Show all groups that have matching accounts, em ordem da lista de grupos do Supabase
     const grpsInData = new Set(contas.map(c => c.grupo || 'OUTRAS BOOKIES'));
-    allGrps = DEFAULT_GRUPOS.filter(g => grpsInData.has(g));
-    // Add any extra groups not in default list
-    [...grpsInData].filter(g => !DEFAULT_GRUPOS.includes(g)).forEach(g => allGrps.push(g));
+    allGrps = grupos.filter(g => grpsInData.has(g));
+    // Add any extra groups not in current list
+    [...grpsInData].filter(g => !grupos.includes(g)).forEach(g => allGrps.push(g));
   }
 
   const main = document.getElementById('main-content');
@@ -1081,14 +1137,14 @@ function toast(msg, type='ok') {
 }
 
 // Auto-login se sessão salva
-(function() {
+(async function() {
   const saved = localStorage.getItem('me_user');
   if (saved) {
     currentUser = saved;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-screen').style.display = 'block';
     document.getElementById('disp-user').textContent = currentUser;
-    loadGrupos();
+    await loadGrupos();
     init();
   }
 })();
