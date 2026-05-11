@@ -443,7 +443,7 @@ function renderGrpPills() {
   if (grupos.includes('OUTRAS BOOKIES')) ordenados.push('OUTRAS BOOKIES');
 
   bar.innerHTML = ordenados.map((g, idx) => {
-    const cnt = allContas.filter(x=>(x.grupo||'OUTRAS BOOKIES')===g).length;
+    const cnt = allContas.filter(x=>x.grupo===g).length;
     const isOutras = g === 'OUTRAS BOOKIES';
     const isActive = activeGrpFilter === g;
     return `<div class="grp-pill${isActive?' active':''}"
@@ -700,7 +700,7 @@ function renderGroups() {
   let contas = allContas.filter(c => {
     const matchSearch = !search || [c.casa,c.agente,c.login].some(v=>(v||'').toLowerCase().includes(search));
     const matchSit    = !activeSitFilter || badgeClass(c.situacao) === activeSitFilter;
-    const matchGrp    = !filGrp || (c.grupo||'OUTRAS BOOKIES') === filGrp;
+    const matchGrp    = !filGrp || c.grupo === filGrp;
     return matchSearch && matchSit && matchGrp;
   });
 
