@@ -284,7 +284,7 @@ select.filter-sel:focus { border-color: var(--accent); }
 
   <div class="stats-bar">
     <div class="stat">
-      <div class="stat-label">Saldo Real</div>
+      <div class="stat-label" id="st-saldo-label">Saldo Real</div>
       <div class="stat-val" id="st-saldo">—</div>
       <div id="st-saldo-sub" style="font-size:11px;color:var(--text3);margin-top:3px">—</div>
     </div>
@@ -669,7 +669,7 @@ async function sbDelete(path) {
 async function init() {
   try {
     allContas = await sbGet('contas?select=*&order=ordem.asc,created_at.asc');
-    try { const p = await sbRpc('saldo_pendente'); window._pendenteReais = parseFloat(p?.r)||0; } catch(e){ window._pendenteReais = 0; }
+    try { window._pendData = await sbRpc('saldo_pendente_por_bookie'); } catch(e){ window._pendData = {total:{r:0,u:0},bookies:[]}; }
     populateFilters();
     renderGrpPills();
     renderGroups();
@@ -688,10 +688,28 @@ function updateStats(list) {
   const acao     = src.filter(c => { const n=normSit(c.situacao); return !n.includes('INATIVA') && !n.includes('LIMITADA') && n !== 'ATIVA'; });
   const inativas = src.filter(c => isInativa(c.situacao));
   const saldo    = src.reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
-  const pend     = window._pendenteReais || 0;
-  document.getElementById('st-saldo').textContent    = brl(saldo + pend);
-  const subEl = document.getElementById('st-saldo-sub');
-  if (subEl) subEl.textContent = brl(saldo) + ' disponível · ' + brl(pend) + ' pendente';
+  const pd       = window._pendData || {total:{r:0,u:0}, bookies:[]};
+  const subEl    = document.getElementById('st-saldo-sub');
+  const labelEl  = document.getElementById('st-saldo-label');
+  let pend = 0, mostrar = false;
+  if (activeGrpFilter) {
+    // pendente das casas (bookies) desse grupo — nomes normalizados (contas em MAIÚSC, apostas em Title)
+    const casas = new Set(allContas.filter(c => c.grupo === activeGrpFilter).map(c => normSit(c.casa)));
+    pend = pd.bookies.filter(x => casas.has(normSit(x.b))).reduce((s,x)=>s+(parseFloat(x.r)||0),0);
+    mostrar = true;
+  } else if (!activeSitFilter) {
+    pend = parseFloat(pd.total?.r)||0;
+    mostrar = true;
+  }
+  if (mostrar) {
+    document.getElementById('st-saldo').textContent = brl(saldo + pend);
+    if (labelEl) labelEl.textContent = 'Saldo Real';
+    if (subEl) { subEl.style.display = ''; subEl.textContent = brl(saldo) + ' disponível · ' + brl(pend) + ' pendente'; }
+  } else {
+    document.getElementById('st-saldo').textContent = brl(saldo);
+    if (labelEl) labelEl.textContent = 'Saldo Total';
+    if (subEl) { subEl.style.display = 'none'; subEl.textContent = ''; }
+  }
   document.getElementById('st-ativas').textContent   = ativas.length;
   document.getElementById('st-acao').textContent     = acao.length;
   document.getElementById('st-inativas').textContent = inativas.length;
