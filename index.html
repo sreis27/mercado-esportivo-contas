@@ -284,8 +284,9 @@ select.filter-sel:focus { border-color: var(--accent); }
 
   <div class="stats-bar">
     <div class="stat">
-      <div class="stat-label">Saldo Total</div>
+      <div class="stat-label">Saldo Real</div>
       <div class="stat-val" id="st-saldo">—</div>
+      <div id="st-saldo-sub" style="font-size:11px;color:var(--text3);margin-top:3px">—</div>
     </div>
     <div class="stat stat-clickable" id="card-todas" onclick="setSitFilter('','todas')" title="Ver todas">
       <div class="stat-label">Total</div>
@@ -641,6 +642,11 @@ async function sbGet(path) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+async function sbRpc(fn, body={}) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, { method:'POST', headers: headers(), body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
 async function sbPatch(path, body) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { method:'PATCH', headers: headers(true), body: JSON.stringify(body) });
   if (!r.ok) throw new Error(await r.text());
@@ -663,6 +669,7 @@ async function sbDelete(path) {
 async function init() {
   try {
     allContas = await sbGet('contas?select=*&order=ordem.asc,created_at.asc');
+    try { const p = await sbRpc('saldo_pendente'); window._pendenteReais = parseFloat(p?.r)||0; } catch(e){ window._pendenteReais = 0; }
     populateFilters();
     renderGrpPills();
     renderGroups();
@@ -681,7 +688,10 @@ function updateStats(list) {
   const acao     = src.filter(c => { const n=normSit(c.situacao); return !n.includes('INATIVA') && !n.includes('LIMITADA') && n !== 'ATIVA'; });
   const inativas = src.filter(c => isInativa(c.situacao));
   const saldo    = src.reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
-  document.getElementById('st-saldo').textContent    = brl(saldo);
+  const pend     = window._pendenteReais || 0;
+  document.getElementById('st-saldo').textContent    = brl(saldo + pend);
+  const subEl = document.getElementById('st-saldo-sub');
+  if (subEl) subEl.textContent = brl(saldo) + ' disponível · ' + brl(pend) + ' pendente';
   document.getElementById('st-ativas').textContent   = ativas.length;
   document.getElementById('st-acao').textContent     = acao.length;
   document.getElementById('st-inativas').textContent = inativas.length;
