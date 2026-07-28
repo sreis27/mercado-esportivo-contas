@@ -120,6 +120,8 @@ select.filter-sel:focus { border-color: var(--accent); }
 .badge.inativa, .badge.limitada { background: rgba(224,82,82,.12); color: var(--danger); border: 1px solid rgba(224,82,82,.2); }
 
 .saldo-val { font-family: var(--mono); font-size: 13px; }
+.idade-saldo { font-size: 10px; color: var(--text3); font-family: var(--mono); margin-top: 1px; }
+.idade-saldo.velho { color: var(--warn); }
 .saldo-val.pos { color: var(--accent); }
 .saldo-val.neg { color: var(--danger); }
 .saldo-val.zero { color: var(--text3); }
@@ -670,6 +672,7 @@ async function init() {
   try {
     allContas = await sbGet('contas?select=*&order=ordem.asc,created_at.asc');
     try { window._pendData = await sbRpc('saldo_pendente_por_bookie'); } catch(e){ window._pendData = {total:{r:0,u:0},bookies:[]}; }
+    try { window._idadeSaldos = await sbRpc('idade_saldos'); } catch(e){ window._idadeSaldos = {}; }
     populateFilters();
     renderGrpPills();
     renderGroups();
@@ -804,6 +807,18 @@ function renderGroups() {
   }
 }
 
+// Idade do saldo: última alteração de saldo no histórico (fallback: criação da conta).
+// Neutra por padrão — só ganha cor (amarelo suave) em conta ATIVA com 30+ dias.
+function idadeSaldoHtml(c) {
+  const ts = (window._idadeSaldos || {})[c.id];
+  if (!ts) return '';
+  const dias = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+  const txt = dias <= 0 ? 'hoje' : (dias === 1 ? 'há 1d' : `há ${dias}d`);
+  const velho = dias >= 30 && badgeClass(c.situacao) === 'ativa';
+  const dataFmt = new Date(ts).toLocaleDateString('pt-BR');
+  return `<div class="idade-saldo${velho ? ' velho' : ''}" title="Saldo atualizado em ${dataFmt}">${txt}</div>`;
+}
+
 function badgeClass(s) {
   const n = normSit(s);
   if (n.includes('INATIVA') || n.includes('LIMITADA')) return 'inativa';
@@ -833,7 +848,7 @@ function makeRow(c) {
         <button class="eye-btn" onclick="togglePwd('${c.id}','${esc(c.senha||'')}')">👁</button>
       </div>
     </td>
-    <td><span class="saldo-val ${scls}" style="cursor:pointer" title="Clique para editar" onclick="editSaldo(this,'${c.id}',${sval})">${brl(c.saldo)}</span></td>
+    <td><span class="saldo-val ${scls}" style="cursor:pointer" title="Clique para editar" onclick="editSaldo(this,'${c.id}',${sval})">${brl(c.saldo)}</span>${idadeSaldoHtml(c)}</td>
     <td><span class="badge ${badgeClass(c.situacao)}" style="cursor:pointer" title="Clique para editar" onclick="editSituacao(this,'${c.id}','${esc(c.situacao||'')}')">${badgeLabel(c.situacao)}</span></td>
     <td class="obs-cell" style="color:var(--text3);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="Clique para editar" data-id="${c.id}" data-obs="${esc(c.observacoes||'')}"><span>${esc(c.observacoes||'')}</span></td>
     <td>
@@ -1118,6 +1133,7 @@ function editSaldo(el, id, cur) {
         await sbPatch(`contas?id=eq.${id}`, { saldo: val, atualizado_em: new Date().toISOString(), atualizado_por: currentUser });
         await sbPost('historico_contas', { conta_id:id, campo_alterado:'saldo', valor_anterior:String(cur), valor_novo:String(val), alterado_por:currentUser });
         conta.saldo = val;
+        if (window._idadeSaldos) window._idadeSaldos[id] = new Date().toISOString();
         renderGroups();
         toast('Saldo atualizado', 'ok');
       } catch(e) { toast('Erro: '+e.message,'err'); renderGroups(); }
