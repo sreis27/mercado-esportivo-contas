@@ -810,26 +810,39 @@ function renderGroups() {
 
 // Idade do saldo: última alteração de saldo no histórico (fallback: criação da conta).
 // Neutra por padrão — só ganha cor (amarelo suave) em conta ATIVA com 30+ dias.
+// Extrai {ts, por} do mapa de idades (aceita formato novo e antigo)
+function _idadeInfo(mapa, id) {
+  const raw = (mapa || {})[id];
+  if (!raw) return null;
+  if (typeof raw === 'string') return { ts: raw, por: null };
+  return { ts: raw.ts, por: raw.por || null };
+}
+function _idadeTexto(ts, por) {
+  const d = new Date(ts);
+  const dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+  const hora = d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  const idade = dias <= 0 ? `hoje ${hora}` : (dias === 1 ? 'há 1d' : `há ${dias}d`);
+  const quem = por ? ` · ${por}` : '';
+  const title = `${d.toLocaleDateString('pt-BR')} ${hora}${por ? ' · por ' + por : ''}`;
+  return { texto: idade + quem, title, dias };
+}
+
 function idadeSaldoHtml(c) {
-  const ts = (window._idadeSaldos || {})[c.id];
-  if (!ts) return '';
-  const dias = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
-  const txt = dias <= 0 ? 'hoje' : (dias === 1 ? 'há 1d' : `há ${dias}d`);
+  const info = _idadeInfo(window._idadeSaldos, c.id);
+  if (!info) return '';
+  const { texto, title, dias } = _idadeTexto(info.ts, info.por);
   const velho = dias >= 30 && badgeClass(c.situacao) === 'ativa';
-  const dataFmt = new Date(ts).toLocaleDateString('pt-BR');
-  return `<div class="idade-saldo${velho ? ' velho' : ''}" title="Saldo atualizado em ${dataFmt}">${txt}</div>`;
+  return `<div class="idade-saldo${velho ? ' velho' : ''}" title="Saldo atualizado em ${title}">${texto}</div>`;
 }
 
 // Situações transitórias: exigem ação e não deviam envelhecer
 const SIT_TRANSITORIAS = ['FACIAL','EMAIL','DEPOSITAR','REDEFINIR SENHA','SEM SALDO','LIMITADA'];
 function idadeSituacaoHtml(c) {
-  const ts = (window._idadeSituacoes || {})[c.id];
-  if (!ts) return '';
-  const dias = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
-  const txt = dias <= 0 ? 'hoje' : (dias === 1 ? 'há 1d' : `há ${dias}d`);
+  const info = _idadeInfo(window._idadeSituacoes, c.id);
+  if (!info) return '';
+  const { texto, title, dias } = _idadeTexto(info.ts, info.por);
   const parada = dias >= 2 && SIT_TRANSITORIAS.includes((c.situacao || '').toUpperCase());
-  const dataFmt = new Date(ts).toLocaleDateString('pt-BR');
-  return `<div class="idade-saldo${parada ? ' velho' : ''}" title="Situação desde ${dataFmt}">${txt}</div>`;
+  return `<div class="idade-saldo${parada ? ' velho' : ''}" title="Situação desde ${title}">${texto}</div>`;
 }
 
 function badgeClass(s) {
@@ -1097,7 +1110,7 @@ function editSituacao(el, id, cur) {
         await sbPatch(`contas?id=eq.${id}`, { situacao: val, atualizado_em: new Date().toISOString(), atualizado_por: currentUser });
         await sbPost('historico_contas', { conta_id:id, campo_alterado:'situacao', valor_anterior:cur, valor_novo:val, alterado_por:currentUser });
         conta.situacao = val;
-        if (window._idadeSituacoes) window._idadeSituacoes[id] = new Date().toISOString();
+        if (window._idadeSituacoes) window._idadeSituacoes[id] = { ts: new Date().toISOString(), por: currentUser };
         renderGroups();
         toast('Situação atualizada', 'ok');
       } catch(e) { toast('Erro: '+e.message,'err'); renderGroups(); }
@@ -1147,7 +1160,7 @@ function editSaldo(el, id, cur) {
         await sbPatch(`contas?id=eq.${id}`, { saldo: val, atualizado_em: new Date().toISOString(), atualizado_por: currentUser });
         await sbPost('historico_contas', { conta_id:id, campo_alterado:'saldo', valor_anterior:String(cur), valor_novo:String(val), alterado_por:currentUser });
         conta.saldo = val;
-        if (window._idadeSaldos) window._idadeSaldos[id] = new Date().toISOString();
+        if (window._idadeSaldos) window._idadeSaldos[id] = { ts: new Date().toISOString(), por: currentUser };
         renderGroups();
         toast('Saldo atualizado', 'ok');
       } catch(e) { toast('Erro: '+e.message,'err'); renderGroups(); }
