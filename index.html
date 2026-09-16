@@ -202,14 +202,15 @@ select.filter-sel:focus { border-color: var(--accent); }
 .grp-pill {
   cursor: pointer; background: var(--surface2); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 14px; transition: all .15s;
-  display: flex; flex-direction: column; gap: 2px; min-width: 90px;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  min-width: 90px; max-width: 170px;
   position: relative;
 }
 .grp-pill[draggable="true"] { cursor: grab; }
 .grp-pill[draggable="true"]:active { cursor: grabbing; }
 .grp-pill:hover { border-color: var(--text2); }
 .grp-pill.active { border-color: var(--accent); background: rgba(0,229,160,.08); }
-.grp-pill-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; font-family: var(--mono); }
+.grp-pill-label { font-size: 10px; line-height: 1.35; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; font-family: var(--mono); white-space: normal; }
 .grp-pill-count { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--text); }
 .grp-pill.active .grp-pill-count { color: var(--accent); }
 .grp-pill.active .grp-pill-label { color: var(--accent2); }
@@ -457,7 +458,7 @@ function renderGrpPills() {
               ondrop="grpDrop(event, '${esc(g).replace(/'/g,"\\'")}')"
               ondblclick="grpEditNome('${esc(g).replace(/'/g,"\\'")}')"
               onclick="if(!event.target.closest('.grp-pill-x')) setGrpFilter('${esc(g).replace(/'/g,"\\'")}')">
-      <div class="grp-pill-label">${esc(g)}</div>
+      <div class="grp-pill-label">${esc(g).replace(/\//g, '/<wbr>')}</div>
       <div class="grp-pill-count">${cnt}</div>
       ${isOutras ? '' : `<div class="grp-pill-x" onclick="event.stopPropagation();grpRemove('${esc(g).replace(/'/g,"\\'")}')" title="Apagar grupo">×</div>`}
     </div>`;
