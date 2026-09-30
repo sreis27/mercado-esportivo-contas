@@ -212,6 +212,7 @@ select.filter-sel:focus { border-color: var(--accent); }
 .grp-pill[draggable="true"]:active { cursor: grabbing; }
 .grp-pill:hover { border-color: var(--text2); }
 .grp-pill.active { border-color: var(--accent); background: rgba(0,229,160,.08); }
+.grp-pill-sem { border-style: dashed; }
 .grp-pill-label { font-size: 10px; line-height: 1.35; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; font-family: var(--mono); white-space: normal; }
 .grp-pill-count { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--text); }
 .grp-pill.active .grp-pill-count { color: var(--accent); }
@@ -406,6 +407,11 @@ const STATUS_LABELS = { ATIVA:'Ativa', ACAO:'Ação', INATIVA:'Inativa', LIMITAD
 let currentUser = null;
 let allContas = [];
 let grupos = [];      // ['Principais','Espelho da Estrela', ...]
+// Conta sem grupo cadastrado: vazio, 'Sem Grupo' (default do banco) ou nome de grupo que não existe mais.
+// Nenhum grupo é obrigatório — apagar um grupo manda as contas pra cá, nunca apaga conta.
+const SEM_GRUPO = 'Sem Grupo';
+function grupoDe(c) { return grupos.includes(c.grupo) ? c.grupo : SEM_GRUPO; }
+function mesmoNome(a, b) { return String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase(); }
 let dragSrc = null;
 let sortCol = ''; let sortDir = 1;
 
@@ -447,27 +453,34 @@ function setGrpFilter(val) {
 function renderGrpPills() {
   const bar = document.getElementById('group-pills-bar');
   if (!bar) return;
-  // Garante OUTRAS BOOKIES no fim (catch-all)
-  const ordenados = grupos.filter(g => g !== 'OUTRAS BOOKIES');
-  if (grupos.includes('OUTRAS BOOKIES')) ordenados.push('OUTRAS BOOKIES');
+  const js = s => esc(s).replace(/'/g,"\\'");
 
-  bar.innerHTML = ordenados.map((g, idx) => {
+  const pills = grupos.map(g => {
     const cnt = allContas.filter(x=>x.grupo===g).length;
-    const isOutras = g === 'OUTRAS BOOKIES';
     const isActive = activeGrpFilter === g;
     return `<div class="grp-pill${isActive?' active':''}"
-              draggable="${isOutras?'false':'true'}"
+              draggable="true"
               data-grupo="${esc(g)}"
-              ondragstart="grpDragStart(event, '${esc(g).replace(/'/g,"\\'")}')"
+              ondragstart="grpDragStart(event, '${js(g)}')"
               ondragover="event.preventDefault()"
-              ondrop="grpDrop(event, '${esc(g).replace(/'/g,"\\'")}')"
-              ondblclick="grpEditNome('${esc(g).replace(/'/g,"\\'")}')"
-              onclick="if(!event.target.closest('.grp-pill-x')) setGrpFilter('${esc(g).replace(/'/g,"\\'")}')">
+              ondrop="grpDrop(event, '${js(g)}')"
+              ondblclick="grpEditNome('${js(g)}')"
+              onclick="if(!event.target.closest('.grp-pill-x')) setGrpFilter('${js(g)}')">
       <div class="grp-pill-label">${esc(g).replace(/\//g, '/<wbr>')}</div>
       <div class="grp-pill-count">${cnt}</div>
-      ${isOutras ? '' : `<div class="grp-pill-x" onclick="event.stopPropagation();grpRemove('${esc(g).replace(/'/g,"\\'")}')" title="Apagar grupo">×</div>`}
+      <div class="grp-pill-x" onclick="event.stopPropagation();grpRemove('${js(g)}')" title="Apagar grupo (as contas vão pra Sem grupo)">×</div>
     </div>`;
-  }).join('') + `<div class="grp-pill grp-pill-add" onclick="grpAddInline()" title="Adicionar grupo">+</div>`;
+  });
+
+  // Pill virtual das contas sem grupo — só aparece quando tem alguma
+  const semCnt = allContas.filter(c => grupoDe(c) === SEM_GRUPO).length;
+  if (!semCnt && activeGrpFilter === SEM_GRUPO) activeGrpFilter = '';
+  if (semCnt) pills.push(`<div class="grp-pill grp-pill-sem${activeGrpFilter===SEM_GRUPO?' active':''}" onclick="setGrpFilter('${SEM_GRUPO}')" title="Contas sem grupo. Pra pôr num grupo: ✏️ na conta e escolha o grupo">
+      <div class="grp-pill-label">Sem grupo</div>
+      <div class="grp-pill-count">${semCnt}</div>
+    </div>`);
+
+  bar.innerHTML = pills.join('') + `<div class="grp-pill grp-pill-add" onclick="grpAddInline()" title="Adicionar grupo">+</div>`;
 }
 
 let grpDragSrcName = null;
@@ -478,7 +491,6 @@ function grpDragStart(e, nome) {
 async function grpDrop(e, targetNome) {
   e.preventDefault();
   if (!grpDragSrcName || grpDragSrcName === targetNome) return;
-  if (grpDragSrcName === 'OUTRAS BOOKIES' || targetNome === 'OUTRAS BOOKIES') return;
   const srcIdx = grupos.indexOf(grpDragSrcName);
   const tgtIdx = grupos.indexOf(targetNome);
   if (srcIdx < 0 || tgtIdx < 0) return;
@@ -490,11 +502,11 @@ async function grpDrop(e, targetNome) {
 }
 
 async function grpEditNome(atual) {
-  if (atual === 'OUTRAS BOOKIES') return;
   const novo = prompt(`Renomear "${atual}":`, atual);
   if (!novo || novo.trim() === '' || novo.trim() === atual) return;
   const novoNome = novo.trim();
-  if (grupos.includes(novoNome)) { toast('Já existe um grupo com esse nome', 'err'); return; }
+  if (mesmoNome(novoNome, SEM_GRUPO)) { toast('"Sem grupo" é reservado', 'err'); return; }
+  if (grupos.some(g => g !== atual && mesmoNome(g, novoNome))) { toast('Já existe um grupo com esse nome', 'err'); return; }
   try {
     // 1. Atualiza nome do grupo na tabela grupos_contas
     const grupoId = _gruposIdMap[atual];
@@ -502,34 +514,42 @@ async function grpEditNome(atual) {
     _gruposIdMap[novoNome] = grupoId;
     delete _gruposIdMap[atual];
 
-    // 2. Atualiza referências nas contas
-    const afetadas = allContas.filter(c => (c.grupo||'OUTRAS BOOKIES') === atual);
-    for (const c of afetadas) {
-      c.grupo = novoNome;
-      await sbPatch(`contas?id=eq.${c.id}`, { grupo: novoNome });
-    }
+    // 2. Atualiza referências nas contas (um PATCH só)
+    await sbPatch(`contas?grupo=eq.${encodeURIComponent(atual)}`, { grupo: novoNome });
+    allContas.forEach(c => { if (c.grupo === atual) c.grupo = novoNome; });
+
     const idx = grupos.indexOf(atual);
     if (idx >= 0) grupos[idx] = novoNome;
     if (activeGrpFilter === atual) activeGrpFilter = novoNome;
-    renderGrpPills();
+    renderGrpPills(); renderGroups();
     populateGrupoSelectInModal();
     toast('Grupo renomeado', 'ok');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
+// Apagar grupo nunca apaga conta: as contas vão pra Sem grupo (e ficam no histórico de cada uma)
 async function grpRemove(g) {
-  if (g === 'OUTRAS BOOKIES') return;
-  const cnt = allContas.filter(c => (c.grupo||'OUTRAS BOOKIES') === g).length;
+  const afetadas = allContas.filter(c => c.grupo === g);
+  const cnt = afetadas.length;
+  const comSaldo = afetadas.filter(c => (parseFloat(c.saldo)||0) !== 0);
+  const saldo = comSaldo.reduce((s,c) => s + (parseFloat(c.saldo)||0), 0);
   const msg = cnt > 0
-    ? `Apagar "${g}"? As ${cnt} contas vão pra OUTRAS BOOKIES.`
-    : `Apagar "${g}"?`;
+    ? `Apagar o grupo "${g}"?\n\nAs ${cnt} conta${cnt!==1?'s':''} vão pra Sem grupo`
+      + (comSaldo.length ? ` (${comSaldo.length} com saldo, ${brl(saldo)})` : '')
+      + `.\nNenhuma conta é apagada.`
+    : `Apagar o grupo "${g}"?`;
   if (!confirm(msg)) return;
   try {
-    // 1. Move contas pra OUTRAS BOOKIES
-    const afetadas = allContas.filter(c => (c.grupo||'OUTRAS BOOKIES') === g);
-    for (const c of afetadas) {
-      c.grupo = 'OUTRAS BOOKIES';
-      await sbPatch(`contas?id=eq.${c.id}`, { grupo: 'OUTRAS BOOKIES' });
+    // 1. Contas vão pra Sem grupo (um PATCH só)
+    if (cnt) {
+      await sbPatch(`contas?grupo=eq.${encodeURIComponent(g)}`, { grupo: SEM_GRUPO });
+      afetadas.forEach(c => c.grupo = SEM_GRUPO);
+      try {
+        await sbPost('historico_contas', afetadas.map(c => ({
+          conta_id: c.id, campo_alterado: 'grupo',
+          valor_anterior: g, valor_novo: SEM_GRUPO, alterado_por: currentUser
+        })));
+      } catch(e) { console.error('Histórico da remoção de grupo:', e); }
     }
     // 2. Apaga o registro do grupo
     const grupoId = _gruposIdMap[g];
@@ -537,9 +557,9 @@ async function grpRemove(g) {
     delete _gruposIdMap[g];
 
     grupos = grupos.filter(x => x !== g);
-    if (!grupos.includes('OUTRAS BOOKIES')) grupos.push('OUTRAS BOOKIES');
     if (activeGrpFilter === g) activeGrpFilter = '';
     renderGrpPills(); renderGroups();
+    populateGrupoSelectInModal();
     toast('Grupo apagado', 'ok');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
@@ -548,20 +568,18 @@ async function grpAddInline() {
   const nome = prompt('Nome do novo grupo:');
   if (!nome || !nome.trim()) return;
   const v = nome.trim();
-  if (grupos.includes(v)) { toast('Grupo já existe', 'err'); return; }
+  if (mesmoNome(v, SEM_GRUPO)) { toast('"Sem grupo" é reservado', 'err'); return; }
+  if (grupos.some(g => mesmoNome(g, v))) { toast('Grupo já existe', 'err'); return; }
   try {
-    // Calcula a próxima ordem (última posição antes de OUTRAS BOOKIES)
-    const idxOutras = grupos.indexOf('OUTRAS BOOKIES');
-    const ordem = idxOutras >= 0 ? idxOutras + 1 : grupos.length + 1;
-    const inserted = await sbPostReturn('grupos_contas', { nome: v, ordem: ordem });
+    const inserted = await sbPostReturn('grupos_contas', { nome: v, ordem: grupos.length + 1 });
     if (inserted && inserted[0]) _gruposIdMap[v] = inserted[0].id;
+    grupos.push(v);
 
-    if (idxOutras >= 0) grupos.splice(idxOutras, 0, v);
-    else grupos.push(v);
-
-    renderGrpPills();
+    // Contas que já tinham esse nome de grupo (ex.: grupo apagado e recriado) entram nele sozinhas
+    renderGrpPills(); renderGroups();
     populateGrupoSelectInModal();
     toast('Grupo adicionado', 'ok');
+    await saveGruposOrdem(); // renumera 1..n pra ordem do banco bater com a da tela
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
@@ -584,19 +602,7 @@ async function loadGrupos() {
     grupos = [];
     _gruposIdMap = {};
   }
-  // Garantir que OUTRAS BOOKIES exista e fique sempre por último
-  if (!grupos.includes('OUTRAS BOOKIES')) {
-    try {
-      const inserted = await sbPostReturn('grupos_contas', { nome: 'OUTRAS BOOKIES', ordem: 999 });
-      if (inserted && inserted[0]) {
-        grupos.push('OUTRAS BOOKIES');
-        _gruposIdMap['OUTRAS BOOKIES'] = inserted[0].id;
-      }
-    } catch(e) { console.error('Erro criando OUTRAS BOOKIES:', e); }
-  } else {
-    grupos = grupos.filter(g => g !== 'OUTRAS BOOKIES');
-    grupos.push('OUTRAS BOOKIES');
-  }
+  // OUTRAS BOOKIES deixou de ser obrigatório: não é mais recriado ao carregar.
 }
 
 // Salvar ordem completa (chamado depois de drag-and-drop)
@@ -606,7 +612,7 @@ async function saveGruposOrdem() {
     const nome = grupos[i];
     const id = _gruposIdMap[nome];
     if (!id) continue;
-    const novaOrdem = nome === 'OUTRAS BOOKIES' ? 999 : i + 1;
+    const novaOrdem = i + 1;
     try {
       await sbPatch(`grupos_contas?id=eq.${id}`, { ordem: novaOrdem });
     } catch(e) { console.error('Erro salvando ordem:', e); }
@@ -704,7 +710,7 @@ function updateStats(list) {
   let pend = 0, mostrar = false;
   if (activeGrpFilter) {
     // pendente das casas (bookies) desse grupo — nomes normalizados (contas em MAIÚSC, apostas em Title)
-    const casas = new Set(allContas.filter(c => c.grupo === activeGrpFilter).map(c => normSit(c.casa)));
+    const casas = new Set(allContas.filter(c => grupoDe(c) === activeGrpFilter).map(c => normSit(c.casa)));
     pend = pd.bookies.filter(x => casas.has(normSit(x.b))).reduce((s,x)=>s+(parseFloat(x.r)||0),0);
     mostrar = true;
   } else if (!activeSitFilter) {
@@ -738,7 +744,7 @@ function renderGroups() {
   let contas = allContas.filter(c => {
     const matchSearch = !search || [c.casa,c.agente,c.login].some(v=>(v||'').toLowerCase().includes(search));
     const matchSit    = !activeSitFilter || badgeClass(c.situacao) === activeSitFilter;
-    const matchGrp    = !filGrp || c.grupo === filGrp;
+    const matchGrp    = !filGrp || grupoDe(c) === filGrp;
     return matchSearch && matchSit && matchGrp;
   });
 
@@ -748,7 +754,7 @@ function renderGroups() {
     allGrps = [filGrp];
   } else {
     // Show all groups that have matching accounts, em ordem da lista de grupos do Supabase
-    const grpsInData = new Set(contas.map(c => c.grupo || 'OUTRAS BOOKIES'));
+    const grpsInData = new Set(contas.map(c => grupoDe(c)));
     allGrps = grupos.filter(g => grpsInData.has(g));
     // Add any extra groups not in current list
     [...grpsInData].filter(g => !grupos.includes(g)).forEach(g => allGrps.push(g));
@@ -798,7 +804,7 @@ function renderGroups() {
   } else {
     // Por grupo — mostra cabeçalho
     allGrps.forEach(grp => {
-      let grpContas = sortContas(contas.filter(c=>(c.grupo||'OUTRAS BOOKIES')===grp));
+      let grpContas = sortContas(contas.filter(c=>grupoDe(c)===grp));
       if (!grpContas.length) return;
 
       const block = document.createElement('div');
@@ -869,13 +875,15 @@ function makeRow(c) {
   const tr = document.createElement('tr');
   tr.className = 'conta-row';
   tr.dataset.id = c.id;
-  tr.draggable = true;
+  // Reordenar só dentro de um grupo filtrado. Na visão "Todas" arrastar jogava a conta em Sem Grupo.
+  const podeArrastar = !!activeGrpFilter;
+  tr.draggable = podeArrastar;
 
   const sval = parseFloat(c.saldo)||0;
   const scls = sval > 0 ? 'pos' : sval < 0 ? 'neg' : 'zero';
 
   tr.innerHTML = `
-    <td><span class="drag-handle" title="Arrastar">⠿</span></td>
+    <td><span class="drag-handle" ${podeArrastar ? 'title="Arrastar"' : 'title="Filtre um grupo pra reordenar" style="opacity:.25;cursor:default"'}>⠿</span></td>
     <td><b>${esc(c.casa)}</b></td>
     <td style="color:var(--text2)">${esc(c.agente||'')}</td>
     <td><span class="copyable" style="color:var(--text2);font-family:var(--mono);font-size:12px;cursor:pointer" title="Clique para copiar" onclick="copyTxt(event, ${JSON.stringify(c.login||'').replace(/"/g,'&quot;')})">${esc(c.login||'')}</span></td>
@@ -921,25 +929,28 @@ function setupDrop(tbody) {
     e.preventDefault();
     if (dragSrc && tbody !== dragSrc.closest('tbody')) {
       // Drop onto empty tbody
-      const newGrp = tbody.closest('.group-block')?.dataset.grupo || 'Sem Grupo';
-      handleDropToGroup(newGrp);
+      const newGrp = tbody.closest('.group-block')?.dataset.grupo;
+      if (newGrp) handleDropToGroup(newGrp);
     }
   });
 }
 
 async function handleDrop(targetRow) {
   if (!dragSrc || dragSrc === targetRow) return;
-  const newGrp = targetRow.closest('.group-block')?.dataset.grupo || 'Sem Grupo';
+  const newGrp = targetRow.closest('.group-block')?.dataset.grupo;
+  if (!newGrp) return; // visão "Todas": arrastar não troca grupo
   const srcId  = dragSrc.dataset.id;
   const tgtId  = targetRow.dataset.id;
 
-  // Update grupo if different
+  // Troca de grupo só se a conta estiver de fato em outro grupo
   const srcConta = allContas.find(c=>c.id===srcId);
-  if (srcConta) srcConta.grupo = newGrp;
+  if (!srcConta) return;
+  const grupoAntes = grupoDe(srcConta);
+  if (grupoAntes !== newGrp) srcConta.grupo = newGrp;
 
   // Reorder within group: insert srcConta before targetConta
-  const grpContas = allContas.filter(c=>(c.grupo||'OUTRAS BOOKIES')===newGrp);
-  const others    = allContas.filter(c=>(c.grupo||'OUTRAS BOOKIES')!==newGrp);
+  const grpContas = allContas.filter(c=>grupoDe(c)===newGrp);
+  const others    = allContas.filter(c=>grupoDe(c)!==newGrp);
 
   const srcIdx = grpContas.findIndex(c=>c.id===srcId);
   const tgtIdx = grpContas.findIndex(c=>c.id===tgtId);
@@ -956,30 +967,31 @@ async function handleDrop(targetRow) {
   allContas.push(...others, ...grpContas);
 
   renderGroups();
-  await saveOrdem(grpContas, srcId, newGrp);
+  await saveOrdem(grpContas, srcId, grupoAntes !== newGrp ? grupoAntes : null);
 }
 
 async function handleDropToGroup(newGrp) {
   if (!dragSrc) return;
   const srcId   = dragSrc.dataset.id;
   const srcConta = allContas.find(c=>c.id===srcId);
-  if (!srcConta || srcConta.grupo === newGrp) return;
+  if (!srcConta || grupoDe(srcConta) === newGrp) return;
+  const grupoAntes = grupoDe(srcConta);
   srcConta.grupo = newGrp;
   renderGroups();
-  await saveOrdem([srcConta], srcId, newGrp);
+  await saveOrdem([srcConta], srcId, grupoAntes);
 }
 
-async function saveOrdem(grpContas, mainId, newGrp) {
+// grupoAnterior só vem preenchido quando a conta trocou de grupo — reordenar não gera histórico
+async function saveOrdem(grpContas, mainId, grupoAnterior) {
   try {
     for (const c of grpContas) {
-      await sbPatch(`contas?id=eq.${c.id}`, { ordem: c.ordem, grupo: c.grupo || 'Sem Grupo' });
+      await sbPatch(`contas?id=eq.${c.id}`, { ordem: c.ordem, grupo: c.grupo || SEM_GRUPO });
     }
-    // Log history for grupo change
     const srcConta = allContas.find(c=>c.id===mainId);
-    if (srcConta) {
+    if (srcConta && grupoAnterior) {
       await sbPost('historico_contas', {
         conta_id: mainId, campo_alterado: 'grupo',
-        valor_anterior: '—', valor_novo: newGrp,
+        valor_anterior: grupoAnterior, valor_novo: srcConta.grupo,
         alterado_por: currentUser
       });
     }
@@ -1024,7 +1036,7 @@ async function saveConta() {
     senha:       document.getElementById('f-senha').value.trim(),
     saldo:       parseFloat(document.getElementById('f-saldo').value)||0,
     observacoes: document.getElementById('f-obs').value.trim(),
-    grupo:       document.getElementById('f-grupo').value.trim(),
+    grupo:       normGrupo(document.getElementById('f-grupo').value),
     atualizado_em:  new Date().toISOString(),
     atualizado_por: currentUser,
   };
@@ -1055,8 +1067,18 @@ async function saveConta() {
     }
     closeModal('modal-conta');
     populateFilters(); renderGroups();
-    toast('Conta salva!', 'ok');
+    if (body.grupo !== SEM_GRUPO && !grupos.includes(body.grupo))
+      toast(`Conta salva em Sem grupo: o grupo "${body.grupo}" não existe (crie no +)`, 'err');
+    else
+      toast('Conta salva!', 'ok');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+// Grupo digitado na conta: vazio → Sem grupo; bate com grupo existente ignorando maiúscula → nome cadastrado
+function normGrupo(v) {
+  const t = (v||'').trim();
+  if (!t || mesmoNome(t, SEM_GRUPO)) return SEM_GRUPO;
+  return grupos.find(g => mesmoNome(g, t)) || t;
 }
 
 async function confirmDelete(id, casa) {
