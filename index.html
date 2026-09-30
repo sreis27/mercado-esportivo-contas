@@ -293,6 +293,7 @@ select.filter-sel:focus { border-color: var(--accent); }
       <div class="stat-label" id="st-saldo-label">Saldo Real</div>
       <div class="stat-val" id="st-saldo">—</div>
       <div id="st-saldo-sub" style="font-size:11px;color:var(--text3);margin-top:3px">—</div>
+      <div id="st-saldo-usd" style="font-size:11px;color:var(--text3);margin-top:2px;display:none"></div>
     </div>
     <div class="stat stat-clickable" id="card-todas" onclick="setSitFilter('','todas')" title="Ver todas">
       <div class="stat-label">Total</div>
@@ -335,7 +336,7 @@ select.filter-sel:focus { border-color: var(--accent); }
     <div class="form-row">
       <div class="form-group">
         <label>Casa de Aposta *</label>
-        <input id="f-casa" placeholder="ex: BET365">
+        <input id="f-casa" placeholder="ex: BET365" oninput="sugereMoedaDaCasa()">
       </div>
       <div class="form-group">
         <label>Grupo</label>
@@ -365,8 +366,15 @@ select.filter-sel:focus { border-color: var(--accent); }
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label>Saldo (R$)</label>
+        <label id="f-saldo-label">Saldo (R$)</label>
         <input id="f-saldo" type="number" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label>Moeda do saldo</label>
+        <select id="f-moeda" onchange="moedaTocada = true; atualizaLabelSaldo()">
+          <option value="BRL">R$ — real</option>
+          <option value="USD">US$ — dólar</option>
+        </select>
       </div>
     </div>
     <div class="form-row single">
@@ -532,10 +540,12 @@ async function grpRemove(g) {
   const afetadas = allContas.filter(c => c.grupo === g);
   const cnt = afetadas.length;
   const comSaldo = afetadas.filter(c => (parseFloat(c.saldo)||0) !== 0);
-  const saldo = comSaldo.reduce((s,c) => s + (parseFloat(c.saldo)||0), 0);
+  const saldoR = somaSaldo(comSaldo.filter(c => !isUsd(c)));
+  const saldoD = somaSaldo(comSaldo.filter(isUsd));
+  const saldoTxt = [saldoR ? brl(saldoR) : '', saldoD ? usd(saldoD) : ''].filter(Boolean).join(' · ');
   const msg = cnt > 0
     ? `Apagar o grupo "${g}"?\n\nAs ${cnt} conta${cnt!==1?'s':''} vão pra Sem grupo`
-      + (comSaldo.length ? ` (${comSaldo.length} com saldo, ${brl(saldo)})` : '')
+      + (comSaldo.length ? ` (${comSaldo.length} com saldo, ${saldoTxt})` : '')
       + `.\nNenhuma conta é apagada.`
     : `Apagar o grupo "${g}"?`;
   if (!confirm(msg)) return;
@@ -686,6 +696,7 @@ async function init() {
     try { window._pendData = await sbRpc('saldo_pendente_por_bookie'); } catch(e){ window._pendData = {total:{r:0,u:0},bookies:[]}; }
     try { window._idadeSaldos = await sbRpc('idade_saldos'); } catch(e){ window._idadeSaldos = {}; }
     try { window._idadeSituacoes = await sbRpc('idade_situacoes'); } catch(e){ window._idadeSituacoes = {}; }
+    await loadMoedasCasas();
     populateFilters();
     renderGrpPills();
     renderGroups();
@@ -696,6 +707,11 @@ async function init() {
 
 // ── STATS ───────────────────────────────────────────────────────
 function brl(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+// Saldo na moeda da conta. R$ e US$ nunca se somam: cada total sai separado.
+function usd(v) { return 'US$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function isUsd(c) { return c.moeda === 'USD'; }
+function fmtSaldo(c) { return isUsd(c) ? usd(c.saldo) : brl(c.saldo); }
+function somaSaldo(list) { return list.reduce((a,c)=>a+(parseFloat(c.saldo)||0),0); }
 function normSit(s) { return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function isInativa(s) { const n=normSit(s); return n.includes('INATIVA') || n.includes('LIMITADA'); }
 function updateStats(list) {
@@ -703,18 +719,24 @@ function updateStats(list) {
   const ativas   = src.filter(c => normSit(c.situacao) === 'ATIVA');
   const acao     = src.filter(c => { const n=normSit(c.situacao); return !n.includes('INATIVA') && !n.includes('LIMITADA') && n !== 'ATIVA'; });
   const inativas = src.filter(c => isInativa(c.situacao));
-  const saldo    = src.reduce((a,c)=>a+(parseFloat(c.saldo)||0),0);
-  const pd       = window._pendData || {total:{r:0,u:0}, bookies:[]};
+  const saldo    = somaSaldo(src.filter(c => !isUsd(c)));   // R$ só de contas em real
+  const saldoUsd = somaSaldo(src.filter(isUsd));             // US$ separado, nunca somado ao R$
+  const temUsd   = src.some(isUsd);
+  const pd       = window._pendData || {total:{r:0,u:0,usd:0}, bookies:[]};
   const subEl    = document.getElementById('st-saldo-sub');
+  const usdEl    = document.getElementById('st-saldo-usd');
   const labelEl  = document.getElementById('st-saldo-label');
-  let pend = 0, mostrar = false;
+  let pend = 0, pendUsd = 0, mostrar = false;
   if (activeGrpFilter) {
     // pendente das casas (bookies) desse grupo — nomes normalizados (contas em MAIÚSC, apostas em Title)
     const casas = new Set(allContas.filter(c => grupoDe(c) === activeGrpFilter).map(c => normSit(c.casa)));
-    pend = pd.bookies.filter(x => casas.has(normSit(x.b))).reduce((s,x)=>s+(parseFloat(x.r)||0),0);
+    const doGrupo = pd.bookies.filter(x => casas.has(normSit(x.b)));
+    pend    = doGrupo.reduce((s,x)=>s+(parseFloat(x.r)||0),0);
+    pendUsd = doGrupo.reduce((s,x)=>s+(parseFloat(x.usd)||0),0);
     mostrar = true;
   } else if (!activeSitFilter) {
-    pend = parseFloat(pd.total?.r)||0;
+    pend    = parseFloat(pd.total?.r)||0;
+    pendUsd = parseFloat(pd.total?.usd)||0;
     mostrar = true;
   }
   if (mostrar) {
@@ -725,6 +747,14 @@ function updateStats(list) {
     document.getElementById('st-saldo').textContent = brl(saldo);
     if (labelEl) labelEl.textContent = 'Saldo Total';
     if (subEl) { subEl.style.display = 'none'; subEl.textContent = ''; }
+  }
+  // Linha em dólar: só aparece se o filtro tem conta em US$ ou aposta em US$ pendente
+  if (usdEl) {
+    const pu = mostrar ? pendUsd : 0;
+    if (temUsd || pu) {
+      usdEl.style.display = '';
+      usdEl.innerHTML = `<b>${usd(saldoUsd + pu)}</b>` + (mostrar ? ` · ${usd(saldoUsd)} disponível · ${usd(pu)} pendente` : '');
+    } else { usdEl.style.display = 'none'; usdEl.textContent = ''; }
   }
   document.getElementById('st-ativas').textContent   = ativas.length;
   document.getElementById('st-acao').textContent     = acao.length;
@@ -782,7 +812,12 @@ function renderGroups() {
     const norm = v => String(v||'').toLowerCase();
     return [...list].sort((a,b) => {
       let av = a[sortCol]||'', bv = b[sortCol]||'';
-      if (sortCol==='saldo') { av=parseFloat(av)||0; bv=parseFloat(bv)||0; }
+      if (sortCol==='saldo') {
+        // R$ e US$ não se comparam: contas em real primeiro, depois as em dólar, cada bloco ordenado pelo valor
+        const m = cmp(isUsd(a)?1:0, isUsd(b)?1:0);
+        if (m) return m;
+        av=parseFloat(av)||0; bv=parseFloat(bv)||0;
+      }
       else { av=norm(av); bv=norm(bv); }
       const r = cmp(av,bv);
       if (r) return r*sortDir;
@@ -893,7 +928,7 @@ function makeRow(c) {
         <button class="eye-btn" onclick="togglePwd('${c.id}','${esc(c.senha||'')}')">👁</button>
       </div>
     </td>
-    <td><span class="saldo-val ${scls}" style="cursor:pointer" title="Clique para editar" onclick="editSaldo(this,'${c.id}',${sval})">${brl(c.saldo)}</span>${idadeSaldoHtml(c)}</td>
+    <td><span class="saldo-val ${scls}" style="cursor:pointer" title="Clique para editar" onclick="editSaldo(this,'${c.id}',${sval})">${fmtSaldo(c)}</span>${idadeSaldoHtml(c)}</td>
     <td><span class="badge ${badgeClass(c.situacao)}" style="cursor:pointer" title="Clique para editar" onclick="editSituacao(this,'${c.id}','${esc(c.situacao||'')}')">${badgeLabel(c.situacao)}</span>${idadeSituacaoHtml(c)}</td>
     <td class="obs-cell" style="color:var(--text3);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="Clique para editar" data-id="${c.id}" data-obs="${esc(c.observacoes||'')}"><span>${esc(c.observacoes||'')}</span></td>
     <td>
@@ -1009,6 +1044,10 @@ function openModal(conta=null) {
   document.getElementById('f-senha').value    = conta?.senha || '';
   document.getElementById('f-saldo').value    = conta?.saldo || '';
   document.getElementById('f-obs').value      = conta?.observacoes || '';
+  // Moeda: a conta guarda a sua; conta nova começa em R$ e a casa sugere (US$ se o cadastro da casa for em dólar)
+  document.getElementById('f-moeda').value    = conta?.moeda === 'USD' ? 'USD' : 'BRL';
+  moedaTocada = !!conta;
+  atualizaLabelSaldo();
 
   // Populate grupo datalist
   populateGrupoSelectInModal();
@@ -1016,6 +1055,27 @@ function openModal(conta=null) {
 
   document.getElementById('btn-delete').style.display = conta ? '' : 'none';
   document.getElementById('modal-conta').classList.add('open');
+}
+
+// ── MOEDA DA CONTA ───────────────────────────────────────────────
+let moedaTocada = false;           // usuário escolheu a moeda na mão → a casa não sobrescreve
+let _moedaPorCasa = {};            // 'THUNDERPICK' → 'USD' (vem do cadastro de bookies do dash principal)
+const normCasa = s => normSit(s).replace(/[^A-Z0-9]/g, '');
+async function loadMoedasCasas() {
+  try {
+    const rows = await sbGet('bookies?select=nome,moeda');
+    _moedaPorCasa = Object.fromEntries(rows.filter(b => b.moeda).map(b => [normCasa(b.nome), b.moeda]));
+  } catch(e) { _moedaPorCasa = {}; }
+}
+function sugereMoedaDaCasa() {
+  if (moedaTocada) return;
+  const m = _moedaPorCasa[normCasa(document.getElementById('f-casa').value)];
+  document.getElementById('f-moeda').value = m === 'USD' ? 'USD' : 'BRL';
+  atualizaLabelSaldo();
+}
+function atualizaLabelSaldo() {
+  const m = document.getElementById('f-moeda').value;
+  document.getElementById('f-saldo-label').textContent = m === 'USD' ? 'Saldo (US$)' : 'Saldo (R$)';
 }
 
 function editConta(id) { openModal(allContas.find(c=>c.id===id)); }
@@ -1037,6 +1097,7 @@ async function saveConta() {
     saldo:       parseFloat(document.getElementById('f-saldo').value)||0,
     observacoes: document.getElementById('f-obs').value.trim(),
     grupo:       normGrupo(document.getElementById('f-grupo').value),
+    moeda:       document.getElementById('f-moeda').value === 'USD' ? 'USD' : 'BRL',
     atualizado_em:  new Date().toISOString(),
     atualizado_por: currentUser,
   };
@@ -1046,7 +1107,7 @@ async function saveConta() {
       const old = allContas.find(c=>c.id===id)||{};
       await sbPatch(`contas?id=eq.${id}`, body);
       // Log changes
-      for (const k of ['casa','agente','situacao','login','senha','saldo','observacoes','grupo']) {
+      for (const k of ['casa','agente','situacao','login','senha','saldo','moeda','observacoes','grupo']) {
         if (String(old[k]||'') !== String(body[k]||'')) {
           await sbPost('historico_contas', {
             conta_id:id, campo_alterado:k,
