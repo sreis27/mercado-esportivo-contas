@@ -265,6 +265,58 @@ select.filter-sel:focus { border-color: var(--accent); }
   color: var(--accent); font-family: var(--mono); font-size: 11px;
   letter-spacing: .1em; text-transform: uppercase; outline: none; width: 160px;
 }
+
+/* ABAS */
+.tabs { display: flex; gap: 4px; }
+.tab { background: none; border: 1px solid transparent; color: var(--text2); font: 500 13px var(--sans); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); background: var(--surface2); border-color: var(--border); }
+.tab:focus-visible, .op-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* OPERAÇÃO */
+.op-wrap { padding: 20px 24px 48px; max-width: 1180px; }
+.op-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.op-periodo { font-family: var(--mono); font-size: 14px; color: var(--text); min-width: 210px; text-align: center; }
+.op-btn { cursor: pointer; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); font: 500 13px var(--sans); padding: 6px 12px; border-radius: 6px; }
+.op-btn:hover { border-color: var(--accent); color: var(--accent); }
+.op-btn.on { color: var(--accent); border-color: var(--accent); }
+.op-btn.perigo:hover { border-color: var(--danger); color: var(--danger); }
+.op-seg { display: inline-flex; gap: 2px; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 2px; }
+.op-seg .op-btn { border: none; background: none; padding: 5px 10px; }
+.op-seg .op-btn.on { background: var(--surface); }
+.op-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.op-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.op-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.op-nome { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.op-aberto { font-size: 11px; color: var(--warn); border: 1px solid rgba(245,197,66,.35); border-radius: 20px; padding: 2px 8px; }
+.op-horas { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--text); }
+.op-horas small { font-size: 12px; font-weight: 400; color: var(--text2); }
+.op-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin: 8px 0 12px; }
+.op-bar > div { height: 100%; background: var(--accent); }
+.op-linha { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--border); }
+.op-linha span:first-child { color: var(--text2); }
+.op-linha b { font-family: var(--mono); font-weight: 400; text-align: right; }
+.op-linha.total b { color: var(--accent); font-weight: 700; }
+.op-pend { color: var(--warn); }
+.op-sec { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); margin: 26px 0 10px; }
+.op-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.op-table th { text-align: left; font-weight: 500; font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.op-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.op-table tr:last-child td { border-bottom: none; }
+.op-table .mono { font-family: var(--mono); font-size: 12px; }
+.op-vazio { color: var(--text3); font-size: 13px; padding: 14px 0; }
+.op-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-top: 10px; }
+.op-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text3); }
+.op-form input, .op-form select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 9px; font: 13px var(--sans); }
+.op-form input[type=number] { width: 78px; }
+.op-form input:focus, .op-form select:focus { border-color: var(--accent); outline: none; }
+.op-acoes { display: flex; gap: 6px; justify-content: flex-end; }
+.op-flag { font-size: 11px; color: var(--warn); }
+@media (max-width: 640px) {
+  .op-wrap { padding: 16px; }
+  .topbar { flex-wrap: wrap; height: auto; padding: 8px 16px; gap: 8px; }
+  .op-table { display: block; overflow-x: auto; }
+}
 </style>
 </head>
 <body>
@@ -283,11 +335,16 @@ select.filter-sel:focus { border-color: var(--accent); }
 <div id="app-screen">
   <div class="topbar">
     <div class="brand">RM <span>/</span> MERCADO ESPORTIVO</div>
+    <nav class="tabs" aria-label="Seções">
+      <button class="tab active" data-view="contas" onclick="setView('contas')">Contas</button>
+      <button class="tab" data-view="operacao" onclick="setView('operacao')">Operação</button>
+    </nav>
     <div class="user-pill">usuário: <b id="disp-user"></b></div>
-    <button class="btn primary" onclick="openModal()">+ Nova Conta</button>
+    <button class="btn primary" id="btn-nova-conta" onclick="openModal()">+ Nova Conta</button>
     <button class="btn" onclick="doLogout()">Sair</button>
   </div>
 
+  <div id="view-contas">
   <div class="stats-bar">
     <div class="stat">
       <div class="stat-label" id="st-saldo-label">Saldo Real</div>
@@ -326,6 +383,11 @@ select.filter-sel:focus { border-color: var(--accent); }
   </div>
 
   <div class="main" id="main-content"></div>
+  </div>
+
+  <div id="view-operacao" hidden>
+    <div class="op-wrap" id="op-root"></div>
+  </div>
 </div>
 
 <!-- MODAL CONTA -->
@@ -649,6 +711,8 @@ document.getElementById('l-pass').addEventListener('keydown', e => { if(e.key===
 function doLogout() {
   currentUser = null;
   localStorage.removeItem('me_user');
+  // não deixa o painel de quem saiu na tela de quem entra
+  opDados = null; document.getElementById('op-root').innerHTML = ''; setView('contas');
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('l-user').value=''; document.getElementById('l-pass').value='';
@@ -1301,6 +1365,281 @@ function toast(msg, type='ok') {
   toastTimer = setTimeout(()=>el.className='toast', 3000);
 }
 
+// ── ABAS ─────────────────────────────────────────────────────────
+function setView(v) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+  document.getElementById('view-contas').hidden = v !== 'contas';
+  document.getElementById('view-operacao').hidden = v !== 'operacao';
+  document.getElementById('btn-nova-conta').style.display = v === 'contas' ? '' : 'none';
+  try { localStorage.setItem('me_view', v); } catch(e) {}
+  if (v === 'operacao') renderOperacao();
+}
+
+// ── OPERAÇÃO: escala, horas, pendências e custo ───────────────────
+// Lê e grava com a chave de serviço (tabelas novas não ficam abertas pro anon).
+const TZ = 'America/Sao_Paulo';
+const DIAS = ['dom','seg','ter','qua','qui','sex','sáb'];
+const hsvc = (extra={}) => ({ 'Content-Type':'application/json', apikey: SVC_KEY, Authorization: `Bearer ${SVC_KEY}`, ...extra });
+async function opApi(method, path, body, prefer) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, { method, headers: hsvc(prefer ? { Prefer: prefer } : {}), body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw new Error(await r.text());
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+let opModo = 'semana', opRef = null, opDados = null;
+const isSamuel = () => currentUser === 'Samuel';
+function hojeBRT() { return new Date().toLocaleDateString('en-CA', { timeZone: TZ }); }
+function addDias(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function periodoOp() {
+  if (opModo === 'mes') {
+    const [y, m] = opRef.split('-').map(Number);
+    return [`${y}-${String(m).padStart(2,'0')}-01`, new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)];
+  }
+  const dow = (new Date(opRef + 'T12:00:00Z').getUTCDay() + 6) % 7;
+  const ini = addDias(opRef, -dow);
+  return [ini, addDias(ini, 6)];
+}
+function navOp(dir) {
+  if (opModo === 'mes') { const [y, m] = opRef.split('-').map(Number); opRef = new Date(Date.UTC(y, m - 1 + dir, 15)).toISOString().slice(0, 10); }
+  else opRef = addDias(opRef, 7 * dir);
+  renderOperacao();
+}
+function setOpModo(m) { opModo = m; renderOperacao(); }
+function fmtDur(h) { const m = Math.round((+h || 0) * 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; }
+function diaBR(iso) { const d = new Date(iso + 'T12:00:00Z'); return `${DIAS[d.getUTCDay()]} ${iso.slice(8,10)}/${iso.slice(5,7)}`; }
+function horaBRT(ts) { return new Date(ts).toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }); }
+function dataHoraBRT(ts) { const d = new Date(ts); return d.toLocaleDateString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' }) + ' ' + horaBRT(ts); }
+function brlOp(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function usdOp(v) { return 'US$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function plural(n, s, p) { return `${n} ${n === 1 ? s : p}`; }
+// "09/10/2026 18:05" ou "09/10 18:05" (ano do período) → ISO com fuso de Brasília
+function parseDataHoraBR(txt, anoPadrao) {
+  const m = (txt || '').trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s+(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const [, d, mo, a, h, mi] = m;
+  return `${a || anoPadrao}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}T${h.padStart(2,'0')}:${mi}:00-03:00`;
+}
+
+async function renderOperacao() {
+  if (!opRef) opRef = hojeBRT();
+  const root = document.getElementById('op-root');
+  const [de, ate] = periodoOp();
+  const titulo = opModo === 'mes'
+    ? new Date(de + 'T12:00:00Z').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    : `${diaBR(de)} a ${diaBR(ate)}`;
+  const head = `
+    <div class="op-head">
+      <button class="op-btn" onclick="navOp(-1)" aria-label="Período anterior">‹</button>
+      <div class="op-periodo">${titulo}</div>
+      <button class="op-btn" onclick="navOp(1)" aria-label="Próximo período">›</button>
+      <div class="op-seg" role="group" aria-label="Período">
+        <button class="op-btn ${opModo === 'semana' ? 'on' : ''}" onclick="setOpModo('semana')">Semana</button>
+        <button class="op-btn ${opModo === 'mes' ? 'on' : ''}" onclick="setOpModo('mes')">Mês</button>
+      </div>
+      <button class="op-btn" onclick="opRef = hojeBRT(); renderOperacao()">Hoje</button>
+      <button class="op-btn" onclick="renderOperacao()">Atualizar</button>
+    </div>`;
+  root.innerHTML = head + '<div class="op-vazio">Carregando…</div>';
+  try {
+    opDados = await opApi('POST', 'rpc/painel_operadores', { p_de: de, p_ate: ate });
+  } catch (e) {
+    root.innerHTML = head + `<div class="op-vazio">Erro ao carregar: ${esc(e.message)}</div>`;
+    return;
+  }
+  const todos = (opDados.operadores || []);
+  const visiveis = isSamuel() ? todos : todos.filter(o => o.nome === currentUser);
+  const regs = (opDados.registros || []).filter(r => isSamuel() || r.operador === currentUser);
+
+  root.innerHTML = head
+    + `<div class="op-grid">${visiveis.map(cardOperador).join('') || '<div class="op-vazio">Nada registrado neste período.</div>'}${isSamuel() && visiveis.length > 1 ? cardTotal(visiveis) : ''}</div>`
+    + secaoEscala(opDados.escala || [], todos)
+    + secaoRegistros(regs, todos);
+}
+
+function cardOperador(o) {
+  const pct = o.horas_previstas > 0 ? Math.min(100, Math.round(100 * o.horas / o.horas_previstas)) : 0;
+  const pendIds = (o.pend_prints_ids || []).slice(0, 6).map(i => '#' + i).join(', ');
+  const linhas = [
+    ['Prints', o.prints ? `${o.prints} · ` + ([[o.prints_aviso, 'com aviso'], [o.prints_sem_aposta, 'sem aposta'], [o.prints_erro, 'erro'], [o.prints_repetido, 'repetido']]
+      .filter(([n]) => +n).map(([n, t]) => `${n} ${t}`).join(' · ') || 'todos ok') : '0'],
+    ['Correções pelo bot', o.corrigidos],
+    ['Apostas registradas', o.entradas],
+  ];
+  let html = `<div class="op-card">
+    <div class="op-card-top"><span class="op-nome">${esc(o.nome)}</span>${o.abertos ? '<span class="op-aberto">entrada aberta</span>' : ''}</div>
+    <div class="op-horas">${fmtDur(o.horas)} <small>de ${fmtDur(o.horas_previstas)} previstas</small></div>
+    <div class="op-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
+    ${linhas.map(([k, v]) => `<div class="op-linha"><span>${k}</span><b>${v}</b></div>`).join('')}
+    <div class="op-linha"><span>Pendente agora</span><b class="${o.pend_prints || o.penduradas ? 'op-pend' : ''}">${
+      (o.pend_prints || o.penduradas)
+        ? [o.pend_prints ? `${plural(o.pend_prints, 'print com aviso', 'prints com aviso')} (${pendIds})` : '', o.penduradas ? plural(o.penduradas, 'aposta pendurada', 'apostas penduradas') : ''].filter(Boolean).join(' · ')
+        : 'nada'}</b></div>`;
+  if (isSamuel()) {
+    html += `
+    <div class="op-linha"><span>Atividade no tempo registrado</span><b>${o.atividade_pct == null ? '—' : o.atividade_pct + '%'}</b></div>
+    <div class="op-linha"><span>Prints fora do registro</span><b>${o.prints_fora_registro}</b></div>
+    <div class="op-linha"><span>Saídas fechadas pelo bot</span><b>${o.fechamentos_auto}</b></div>
+    <div class="op-linha"><span>Horas × ${brlOp(o.valor_hora)}</span><b>${brlOp(o.custo_horas)}</b></div>
+    <div class="op-linha"><span>Comissão ${String(o.comissao_pct).replace('.', ',')}% de ${brlOp(o.faturamento_r)}</span><b>${brlOp(o.comissao_r)}</b></div>
+    ${(+o.faturamento_usd || +o.comissao_usd) ? `<div class="op-linha"><span>Comissão em dólar (de ${usdOp(o.faturamento_usd)})</span><b>${usdOp(o.comissao_usd)}</b></div>` : ''}
+    <div class="op-linha total"><span>Total em reais</span><b>${brlOp(o.total_r)}</b></div>`;
+  }
+  return html + '</div>';
+}
+
+function cardTotal(lista) {
+  const soma = k => lista.reduce((s, o) => s + (+o[k] || 0), 0);
+  const usd = soma('comissao_usd');
+  return `<div class="op-card">
+    <div class="op-card-top"><span class="op-nome">Operação</span></div>
+    <div class="op-horas">${fmtDur(soma('horas'))} <small>de ${fmtDur(soma('horas_previstas'))} previstas</small></div>
+    <div class="op-bar"><div style="width:${soma('horas_previstas') > 0 ? Math.min(100, Math.round(100 * soma('horas') / soma('horas_previstas'))) : 0}%"></div></div>
+    <div class="op-linha"><span>Horas</span><b>${brlOp(soma('custo_horas'))}</b></div>
+    <div class="op-linha"><span>Comissões</span><b>${brlOp(soma('comissao_r'))}</b></div>
+    ${usd ? `<div class="op-linha"><span>Comissões em dólar</span><b>${usdOp(usd)}</b></div>` : ''}
+    <div class="op-linha total"><span>Custo dos operadores</span><b>${brlOp(soma('total_r'))}</b></div>
+  </div>`;
+}
+
+function secaoEscala(escala, ops) {
+  const porDia = {};
+  escala.forEach(e => { (porDia[e.data] = porDia[e.data] || []).push(e); });
+  const dias = Object.keys(porDia).sort();
+  const linhas = dias.map(d => {
+    const es = porDia[d];
+    const janela = [...new Set(es.map(e => `${e.janela_inicio}–${e.janela_fim}`))].join(' / ');
+    const quem = es.map(e => `${esc(e.operador)} ${fmtDur(e.horas_previstas)}`).join(' · ');
+    const obs = es.map(e => e.obs).filter(Boolean).join(' · ');
+    return `<tr><td class="mono">${diaBR(d)}</td><td class="mono">${janela}</td><td>${quem}</td><td style="color:var(--text2)">${esc(obs)}</td>
+      ${isSamuel() ? `<td><div class="op-acoes"><button class="op-btn" onclick="editarDiaEscala('${d}')">Editar</button><button class="op-btn perigo" onclick="apagarDiaEscala('${d}')">Tirar</button></div></td>` : ''}</tr>`;
+  }).join('');
+  const total = escala.reduce((s, e) => s + (+e.horas_previstas || 0), 0);
+  let html = `<div class="op-sec">Escala${total ? ` · ${fmtDur(total)} previstas` : ''}</div>`;
+  html += dias.length
+    ? `<table class="op-table"><thead><tr><th>Dia</th><th>Janela</th><th>Horas por operador</th><th>Obs</th>${isSamuel() ? '<th></th>' : ''}</tr></thead><tbody>${linhas}</tbody></table>`
+    : '<div class="op-vazio">Sem escala neste período.</div>';
+  if (isSamuel()) {
+    const operadores = ops.filter(o => o.nome !== 'Samuel');
+    html += `<form class="op-form" id="form-escala" onsubmit="salvarDiaEscala(event)">
+      <label>Dia<input type="date" id="esc-data" required></label>
+      <label>Janela de<input type="time" id="esc-ini" value="18:00" required></label>
+      <label>até<input type="time" id="esc-fim" value="22:00" required></label>
+      ${operadores.map(o => `<label>${esc(o.nome)} (h)<input type="number" min="0" max="16" step="0.5" data-op="${o.id}" class="esc-horas" value="0"></label>`).join('')}
+      <label style="flex:1;min-width:140px">Obs<input type="text" id="esc-obs" placeholder="opcional"></label>
+      <button class="op-btn on" type="submit">Salvar dia</button>
+    </form>`;
+  }
+  return html;
+}
+
+function editarDiaEscala(d) {
+  const es = (opDados.escala || []).filter(e => e.data === d);
+  if (!es.length) return;
+  document.getElementById('esc-data').value = d;
+  document.getElementById('esc-ini').value = es[0].janela_inicio;
+  document.getElementById('esc-fim').value = es[0].janela_fim;
+  document.getElementById('esc-obs').value = es.find(e => e.obs)?.obs || '';
+  document.querySelectorAll('.esc-horas').forEach(inp => {
+    const e = es.find(x => x.operador_id === inp.dataset.op);
+    inp.value = e ? e.horas_previstas : 0;
+  });
+  document.getElementById('form-escala').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function salvarDiaEscala(ev) {
+  ev.preventDefault();
+  const data = document.getElementById('esc-data').value;
+  const ini = document.getElementById('esc-ini').value, fim = document.getElementById('esc-fim').value;
+  const obs = document.getElementById('esc-obs').value.trim() || null;
+  if (!data || !ini || !fim) return;
+  if (fim <= ini) { toast('O fim da janela tem que ser depois do início', 'err'); return; }
+  const horasJanela = (Date.parse(`2000-01-01T${fim}`) - Date.parse(`2000-01-01T${ini}`)) / 3600000;
+  const linhas = [], zerar = [];
+  document.querySelectorAll('.esc-horas').forEach(inp => {
+    const h = parseFloat(inp.value) || 0;
+    if (h > 0) linhas.push({ data, operador_id: inp.dataset.op, janela_inicio: ini, janela_fim: fim, horas_previstas: h, obs, criado_por: currentUser });
+    else zerar.push(inp.dataset.op);
+  });
+  if (linhas.some(l => l.horas_previstas > horasJanela)) { toast(`Mais horas que a janela (${fmtDur(horasJanela)})`, 'err'); return; }
+  try {
+    if (linhas.length) await opApi('POST', 'escala?on_conflict=data,operador_id', linhas, 'resolution=merge-duplicates,return=minimal');
+    for (const op of zerar) await opApi('DELETE', `escala?data=eq.${data}&operador_id=eq.${op}`);
+    toast('Escala salva', 'ok');
+    opRef = data;
+    renderOperacao();
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function apagarDiaEscala(d) {
+  if (!confirm(`Tirar ${diaBR(d)} da escala?`)) return;
+  try { await opApi('DELETE', `escala?data=eq.${d}`); toast('Dia removido da escala', 'ok'); renderOperacao(); }
+  catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+function secaoRegistros(regs, ops) {
+  let html = `<div class="op-sec">Entradas e saídas</div>`;
+  html += regs.length ? `<table class="op-table"><thead><tr><th>Operador</th><th>Entrada</th><th>Saída</th><th>Tempo</th><th>Obs</th>${isSamuel() ? '<th></th>' : ''}</tr></thead><tbody>${
+    regs.map(r => `<tr>
+      <td>${esc(r.operador)}</td>
+      <td class="mono">${dataHoraBRT(r.inicio)}</td>
+      <td class="mono">${r.fim ? dataHoraBRT(r.fim) : '<span class="op-flag">aberta</span>'}</td>
+      <td class="mono">${fmtDur(r.horas)}</td>
+      <td style="color:var(--text2);font-size:12px">${[
+        r.fim_auto ? '<span class="op-flag">fechada pelo bot</span>' : '',
+        r.origem && r.origem !== 'telegram' ? esc(r.origem) : '',
+        r.ajustado_por ? 'ajustada por ' + esc(r.ajustado_por) : '',
+        r.obs && !r.fim_auto ? esc(r.obs) : ''].filter(Boolean).join(' · ')}</td>
+      ${isSamuel() ? `<td><div class="op-acoes"><button class="op-btn" onclick="ajustarRegistro('${r.id}')">Ajustar</button><button class="op-btn perigo" onclick="apagarRegistro('${r.id}')">Apagar</button></div></td>` : ''}
+    </tr>`).join('')}</tbody></table>` : '<div class="op-vazio">Nenhuma entrada registrada neste período.</div>';
+  if (isSamuel()) {
+    const operadores = ops.filter(o => o.nome !== 'Samuel');
+    html += `<form class="op-form" onsubmit="registroManual(event)">
+      <label>Operador<select id="reg-op">${operadores.map(o => `<option value="${o.id}">${esc(o.nome)}</option>`).join('')}</select></label>
+      <label>Dia<input type="date" id="reg-data" required></label>
+      <label>Entrada<input type="time" id="reg-ini" required></label>
+      <label>Saída<input type="time" id="reg-fim" required></label>
+      <button class="op-btn on" type="submit">Lançar à mão</button>
+    </form>`;
+  }
+  return html;
+}
+
+async function ajustarRegistro(id) {
+  const r = (opDados.registros || []).find(x => x.id === id);
+  if (!r) return;
+  const ano = r.inicio.slice(0, 4);
+  const ini = prompt(`Entrada de ${r.operador} (dd/mm hh:mm)`, dataHoraBRT(r.inicio));
+  if (ini === null) return;
+  const fim = prompt(`Saída de ${r.operador} (dd/mm hh:mm) — vazio deixa aberta`, r.fim ? dataHoraBRT(r.fim) : '');
+  if (fim === null) return;
+  const iIso = parseDataHoraBR(ini, ano), fIso = fim.trim() ? parseDataHoraBR(fim, ano) : null;
+  if (!iIso || (fim.trim() && !fIso)) { toast('Use o formato dd/mm hh:mm', 'err'); return; }
+  if (fIso && Date.parse(fIso) < Date.parse(iIso)) { toast('Saída antes da entrada', 'err'); return; }
+  try {
+    await opApi('PATCH', `registro_horas?id=eq.${id}`, { inicio: iIso, fim: fIso, fim_auto: false, ajustado_por: currentUser, ajustado_em: new Date().toISOString() }, 'return=minimal');
+    toast('Registro ajustado', 'ok'); renderOperacao();
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function apagarRegistro(id) {
+  const r = (opDados.registros || []).find(x => x.id === id);
+  if (!r || !confirm(`Apagar a entrada de ${r.operador} de ${dataHoraBRT(r.inicio)} (${fmtDur(r.horas)})?`)) return;
+  try { await opApi('DELETE', `registro_horas?id=eq.${id}`); toast('Registro apagado', 'ok'); renderOperacao(); }
+  catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function registroManual(ev) {
+  ev.preventDefault();
+  const op = document.getElementById('reg-op').value, d = document.getElementById('reg-data').value;
+  const ini = document.getElementById('reg-ini').value, fim = document.getElementById('reg-fim').value;
+  if (!op || !d || !ini || !fim) return;
+  if (fim <= ini) { toast('Saída tem que ser depois da entrada', 'err'); return; }
+  try {
+    await opApi('POST', 'registro_horas', { operador_id: op, inicio: `${d}T${ini}:00-03:00`, fim: `${d}T${fim}:00-03:00`, origem: 'manual', ajustado_por: currentUser, ajustado_em: new Date().toISOString() }, 'return=minimal');
+    toast('Registro lançado', 'ok'); opRef = d; renderOperacao();
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
 // Auto-login se sessão salva
 (async function() {
   const saved = localStorage.getItem('me_user');
@@ -1311,6 +1650,7 @@ function toast(msg, type='ok') {
     document.getElementById('disp-user').textContent = currentUser;
     await loadGrupos();
     init();
+    try { if (localStorage.getItem('me_view') === 'operacao') setView('operacao'); } catch(e) {}
   }
 })();
 </script>
