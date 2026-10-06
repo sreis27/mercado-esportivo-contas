@@ -273,6 +273,16 @@ select.filter-sel:focus { border-color: var(--accent); }
 .tab.active { color: var(--accent); background: var(--surface2); border-color: var(--border); }
 .tab:focus-visible, .op-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* TURNO */
+.btn.turno { border-color: var(--accent); color: var(--accent); }
+.btn.turno:hover { background: var(--accent); color: #000; }
+.btn.turno.on { border-color: var(--warn); color: var(--warn); }
+.btn.turno.on:hover { background: var(--warn); color: #000; }
+.btn.turno:disabled { opacity: .6; cursor: wait; }
+.pend-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 24px; font-size: 13px; color: var(--warn); background: rgba(245,197,66,.07); border-bottom: 1px solid rgba(245,197,66,.25); }
+.pend-bar[hidden] { display: none; }
+.pend-bar b { font-weight: 600; }
+
 /* OPERAÇÃO */
 .op-wrap { padding: 20px 24px 48px; max-width: 1180px; }
 .op-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -339,10 +349,12 @@ select.filter-sel:focus { border-color: var(--accent); }
       <button class="tab active" data-view="contas" onclick="setView('contas')">Contas</button>
       <button class="tab" data-view="operacao" onclick="setView('operacao')">Operação</button>
     </nav>
+    <button class="btn turno" id="btn-turno" hidden onclick="turnoClick()">Iniciar turno</button>
     <div class="user-pill">usuário: <b id="disp-user"></b></div>
     <button class="btn primary" id="btn-nova-conta" onclick="openModal()">+ Nova Conta</button>
     <button class="btn" onclick="doLogout()">Sair</button>
   </div>
+  <div class="pend-bar" id="pend-bar" hidden role="status"></div>
 
   <div id="view-contas">
   <div class="stats-bar">
@@ -703,6 +715,7 @@ async function doLogin() {
     document.getElementById('disp-user').textContent = currentUser;
     await loadGrupos();
     init();
+    iniciarTurno();
   } else {
     document.getElementById('l-err').textContent = 'Usuário ou senha inválidos.';
   }
@@ -713,6 +726,7 @@ function doLogout() {
   localStorage.removeItem('me_user');
   // não deixa o painel de quem saiu na tela de quem entra
   opDados = null; document.getElementById('op-root').innerHTML = ''; setView('contas');
+  pararTurno();
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('l-user').value=''; document.getElementById('l-pass').value='';
@@ -1358,11 +1372,11 @@ function fallbackCopy(val) {
 }
 
 let toastTimer;
-function toast(msg, type='ok') {
+function toast(msg, type='ok', ms=3000) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.className = `toast show ${type}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>el.className='toast', 3000);
+  toastTimer = setTimeout(()=>el.className='toast', ms);
 }
 
 // ── ABAS ─────────────────────────────────────────────────────────
@@ -1586,7 +1600,7 @@ function secaoRegistros(regs, ops) {
       <td class="mono">${fmtDur(r.horas)}</td>
       <td style="color:var(--text2);font-size:12px">${[
         r.fim_auto ? '<span class="op-flag">fechada pelo bot</span>' : '',
-        r.origem && r.origem !== 'telegram' ? esc(r.origem) : '',
+        ({ dash: 'pelo botão do dash', manual: 'lançada à mão' })[r.origem] || (r.origem && r.origem !== 'telegram' ? esc(r.origem) : ''),
         r.ajustado_por ? 'ajustada por ' + esc(r.ajustado_por) : '',
         r.obs && !r.fim_auto ? esc(r.obs) : ''].filter(Boolean).join(' · ')}</td>
       ${isSamuel() ? `<td><div class="op-acoes"><button class="op-btn" onclick="ajustarRegistro('${r.id}')">Ajustar</button><button class="op-btn perigo" onclick="apagarRegistro('${r.id}')">Apagar</button></div></td>` : ''}
@@ -1640,6 +1654,71 @@ async function registroManual(ev) {
   } catch (e) { toast('Erro: ' + e.message, 'err'); }
 }
 
+
+// ── TURNO: botão Iniciar/Encerrar no topo (bate o ponto com a hora do servidor;
+//    o bot de prints avisa no RM Office - Chat). Só pra quem é pago por hora.
+let turno = null, turnoTimer = null, turnoPendEm = 0;
+async function iniciarTurno() {
+  pararTurno();
+  await atualizarTurno(true);
+  turnoTimer = setInterval(() => atualizarTurno(Date.now() - turnoPendEm > 300000), 60000);
+}
+function pararTurno() {
+  clearInterval(turnoTimer); turnoTimer = null; turno = null;
+  const b = document.getElementById('btn-turno'); b.hidden = true; b.disabled = false;
+  const p = document.getElementById('pend-bar'); p.hidden = true; p.innerHTML = '';
+}
+async function atualizarTurno(comPendencias) {
+  if (!currentUser) return;
+  try { turno = await opApi('POST', 'rpc/bater_ponto', { p_operador: currentUser, p_acao: 'status' }); }
+  catch (e) { console.error('turno:', e); return; }
+  const b = document.getElementById('btn-turno');
+  if (!turno || !turno.ok || !turno.por_hora) { b.hidden = true; document.getElementById('pend-bar').hidden = true; return; }
+  b.hidden = false;
+  pintarTurno();
+  if (comPendencias) atualizarPendencias();
+}
+function pintarTurno() {
+  const b = document.getElementById('btn-turno');
+  const ab = turno && turno.aberto;
+  b.classList.toggle('on', !!ab);
+  b.textContent = ab ? `Encerrar turno · ${fmtDur((Date.now() - Date.parse(ab.inicio)) / 3600000)}` : 'Iniciar turno';
+  b.title = ab ? `Turno aberto desde ${horaBRT(ab.inicio)}` : 'Marca a entrada e avisa no RM Office - Chat';
+}
+async function atualizarPendencias() {
+  turnoPendEm = Date.now();
+  const bar = document.getElementById('pend-bar');
+  try {
+    const d = await opApi('POST', 'rpc/painel_operadores', { p_de: hojeBRT(), p_ate: hojeBRT() });
+    const o = (d.operadores || []).find(x => x.nome === currentUser);
+    const itens = [];
+    if (o && o.pend_prints) itens.push(`${plural(o.pend_prints, 'print com aviso sem correção', 'prints com aviso sem correção')} (${(o.pend_prints_ids || []).slice(0, 5).map(i => '#' + i).join(', ')})`);
+    if (o && o.penduradas) itens.push(`${plural(o.penduradas, 'aposta com evento encerrado', 'apostas com evento encerrado')} pra resolver`);
+    bar.innerHTML = itens.length ? `<b>Pendente:</b> ${itens.map(esc).join(' · ')}` : '';
+    bar.hidden = !itens.length;
+  } catch (e) { console.error('pendências:', e); }
+}
+async function turnoClick() {
+  if (!turno || !turno.ok) return;
+  const ab = turno.aberto, esc_ = turno.escala_hoje;
+  const pergunta = ab
+    ? `Encerrar o turno? ${fmtDur((Date.now() - Date.parse(ab.inicio)) / 3600000)} desde ${horaBRT(ab.inicio)}.`
+    : 'Iniciar o turno agora?\n' + (esc_ ? `Escala de hoje: ${esc_.janela_inicio}–${esc_.janela_fim} (${fmtDur(esc_.horas_previstas)}).` : 'Você não está na escala de hoje.');
+  if (!confirm(pergunta)) return;
+  const b = document.getElementById('btn-turno');
+  b.disabled = true;
+  try {
+    const r = await opApi('POST', 'rpc/bater_ponto', { p_operador: currentUser, p_acao: ab ? 'saida' : 'entrada' });
+    if (!r.ok) toast({ ja_aberto: 'Você já está com turno aberto', sem_entrada: 'Não achei turno aberto' }[r.motivo] || 'Não deu: ' + r.motivo, 'err');
+    else if (r.acao === 'entrada') toast(`Turno iniciado às ${horaBRT(r.inicio)}. Confere os saldos das casas principais.`, 'ok', 7000);
+    else toast(`Turno encerrado: ${fmtDur(r.horas)}`, 'ok', 5000);
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
+  b.disabled = false;
+  await atualizarTurno(true);
+  if (!document.getElementById('view-operacao').hidden) renderOperacao();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && turnoTimer) atualizarTurno(false); });
+
 // Auto-login se sessão salva
 (async function() {
   const saved = localStorage.getItem('me_user');
@@ -1650,6 +1729,7 @@ async function registroManual(ev) {
     document.getElementById('disp-user').textContent = currentUser;
     await loadGrupos();
     init();
+    iniciarTurno();
     try { if (localStorage.getItem('me_view') === 'operacao') setView('operacao'); } catch(e) {}
   }
 })();
