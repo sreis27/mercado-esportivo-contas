@@ -1148,7 +1148,8 @@ async function loadMoedasCasas() {
 function sugereMoedaDaCasa() {
   if (moedaTocada) return;
   const m = _moedaPorCasa[normCasa(document.getElementById('f-casa').value)];
-  document.getElementById('f-moeda').value = m === 'USD' ? 'USD' : 'BRL';
+  // casa que aceita R$ e US$ (ex.: Stake): a conta pode ser de qualquer uma — mantém a escolhida
+  if (m !== 'AMBAS') document.getElementById('f-moeda').value = m === 'USD' ? 'USD' : 'BRL';
   atualizaLabelSaldo();
 }
 function atualizaLabelSaldo() {
