@@ -54,6 +54,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--sans); min-
 .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
 .stat-val { font-family: var(--mono); font-size: 18px; color: var(--accent); font-weight: 700; }
 .stat-val.warn { color: var(--warn); }
+.saldo-cols { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.saldo-col[hidden] { display: none; }
+.saldo-col + .saldo-col { padding-left: 22px; border-left: 1px solid var(--border); }
+.saldo-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+@media (max-width: 640px) { .saldo-col + .saldo-col { padding-left: 0; border-left: none; } }
 .stat-val.danger { color: var(--danger); }
 
 /* TOOLBAR */
@@ -360,9 +365,16 @@ select.filter-sel:focus { border-color: var(--accent); }
   <div class="stats-bar">
     <div class="stat">
       <div class="stat-label" id="st-saldo-label">Saldo Real</div>
-      <div class="stat-val" id="st-saldo">—</div>
-      <div id="st-saldo-sub" style="font-size:11px;color:var(--text3);margin-top:3px">—</div>
-      <div id="st-saldo-usd" style="font-size:11px;color:var(--text3);margin-top:2px;display:none"></div>
+      <div class="saldo-cols">
+        <div class="saldo-col">
+          <div class="stat-val" id="st-saldo">—</div>
+          <div class="saldo-sub" id="st-saldo-sub">—</div>
+        </div>
+        <div class="saldo-col" id="st-saldo-usd-col" hidden>
+          <div class="stat-val" id="st-saldo-usd">—</div>
+          <div class="saldo-sub" id="st-saldo-usd-sub"></div>
+        </div>
+      </div>
     </div>
     <div class="stat stat-clickable" id="card-todas" onclick="setSitFilter('','todas')" title="Ver todas">
       <div class="stat-label">Total</div>
@@ -826,13 +838,17 @@ function updateStats(list) {
     if (labelEl) labelEl.textContent = 'Saldo Total';
     if (subEl) { subEl.style.display = 'none'; subEl.textContent = ''; }
   }
-  // Linha em dólar: só aparece se o filtro tem conta em US$ ou aposta em US$ pendente
-  if (usdEl) {
+  // Dólar ao lado do real, no mesmo padrão: só aparece se o filtro tem conta em US$ ou aposta em US$ pendente
+  const usdCol = document.getElementById('st-saldo-usd-col');
+  const usdSub = document.getElementById('st-saldo-usd-sub');
+  if (usdEl && usdCol) {
     const pu = mostrar ? pendUsd : 0;
     if (temUsd || pu) {
-      usdEl.style.display = '';
-      usdEl.innerHTML = `<b>${usd(saldoUsd + pu)}</b>` + (mostrar ? ` · ${usd(saldoUsd)} disponível · ${usd(pu)} pendente` : '');
-    } else { usdEl.style.display = 'none'; usdEl.textContent = ''; }
+      usdCol.hidden = false;
+      usdEl.textContent = usd(saldoUsd + pu);
+      usdSub.style.display = mostrar ? '' : 'none';
+      usdSub.textContent = mostrar ? `${usd(saldoUsd)} disponível · ${usd(pu)} pendente` : '';
+    } else { usdCol.hidden = true; usdEl.textContent = ''; usdSub.textContent = ''; }
   }
   document.getElementById('st-ativas').textContent   = ativas.length;
   document.getElementById('st-acao').textContent     = acao.length;
