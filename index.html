@@ -344,6 +344,16 @@ select.filter-sel:focus { border-color: var(--accent); }
 .termo-det p b { color: var(--text); font-weight: 500; }
 .termo-pesos { font-family: var(--sans); text-transform: none; letter-spacing: 0; color: var(--text3); }
 @media (max-width: 640px) { .termo-partes { grid-template-columns: repeat(2, 1fr); } }
+.tips-resumo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tips-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text2); }
+.tips-chip b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+.tip-st { font-size: 11px; border-radius: 20px; padding: 2px 8px; border: 1px solid var(--border); white-space: nowrap; }
+.tip-st.apostada { color: var(--accent); border-color: rgba(0,229,160,.35); }
+.tip-st.sem_aposta { color: var(--danger); border-color: rgba(224,82,82,.4); }
+.tip-st.aberta { color: var(--warn); border-color: rgba(245,197,66,.35); }
+.tip-txt { max-width: 360px; }
+.tip-txt small { display: block; color: var(--text3); font-size: 11px; margin-top: 2px; }
+.tip-motivo { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 6px; font: 12px var(--sans); margin-top: 4px; }
 @media (max-width: 640px) {
   .op-wrap { padding: 16px; }
   .topbar { flex-wrap: wrap; height: auto; padding: 8px 16px; gap: 8px; }
@@ -1488,13 +1498,14 @@ async function renderOperacao() {
       <button class="op-btn" onclick="renderOperacao()">Atualizar</button>
     </div>`;
   root.innerHTML = head + '<div class="op-vazio">Carregando…</div>';
-  let prod = null, prodAnt = null;
+  let prod = null, prodAnt = null, tipsDados = null;
   try {
     const [ade, aate] = periodoAnterior(de, ate);
-    [opDados, prod, prodAnt] = await Promise.all([
+    [opDados, prod, prodAnt, tipsDados] = await Promise.all([
       opApi('POST', 'rpc/painel_operadores', { p_de: de, p_ate: ate }),
       isSamuel() ? opApi('POST', 'rpc/produtividade_operadores', { p_de: de, p_ate: ate }).catch(() => null) : null,
       isSamuel() ? opApi('POST', 'rpc/produtividade_operadores', { p_de: ade, p_ate: aate }).catch(() => null) : null,
+      isSamuel() ? opApi('POST', 'rpc/tips_periodo', { p_de: de, p_ate: ate }).catch(() => null) : null,
     ]);
   } catch (e) {
     root.innerHTML = head + `<div class="op-vazio">Erro ao carregar: ${esc(e.message)}</div>`;
@@ -1507,6 +1518,7 @@ async function renderOperacao() {
   root.innerHTML = head
     + (isSamuel() && prod ? secaoTermometro(prod, prodAnt) : '')
     + `<div class="op-grid">${visiveis.map(cardOperador).join('') || '<div class="op-vazio">Nada registrado neste período.</div>'}${isSamuel() && visiveis.length > 1 ? cardTotal(visiveis) : ''}</div>`
+    + (isSamuel() && tipsDados ? secaoTips(tipsDados) : '')
     + secaoEscala(opDados.escala || [], todos)
     + secaoRegistros(regs, todos);
 }
@@ -1550,6 +1562,42 @@ function cardTermometro(o, a) {
       <p><b>Disciplina</b>: ${fmtDur(dsc.horas)} de ${fmtDur(dsc.horas_previstas)} previstas · atividade ${dsc.atividade_pct == null ? '—' : dsc.atividade_pct + '%'} · ${plural(dsc.faltas || 0, 'falta', 'faltas')} · ${plural(dsc.saidas_esquecidas || 0, 'saída esquecida', 'saídas esquecidas')} · ${plural(dsc.prints_fora_registro || 0, 'print fora do ponto', 'prints fora do ponto')}</p>
     </details>
   </div>`;
+}
+
+// ── TIPS LIDAS DOS GRUPOS (piloto) ──────────────────────────────
+const MOTIVOS_TIP = ['odd caiu', 'conta limitada', 'não deu tempo', 'fora do horário', 'decidi não entrar', 'outro'];
+let tipsSoSemAposta = false;
+function secaoTips(d) {
+  const tips = d.tips || [], res = d.resumo || [];
+  let html = `<div class="op-sec">Tips dos grupos <span class="termo-pesos">· piloto</span></div>`;
+  if (!tips.length) return html + '<div class="op-vazio">Nenhuma tip lida neste período.</div>';
+  const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+  html += `<div class="tips-resumo">${res.map(r => `<div class="tips-chip">${esc(r.quem)}: <b>${r.apostadas}/${r.tips}</b> apostadas (${pct(r.apostadas, r.tips)})`
+    + `${r.sem_aposta ? ` · <b>${r.sem_aposta}</b> sem aposta${r.sem_motivo ? ` (${r.sem_motivo} sem motivo)` : ''}` : ''}`
+    + `${r.reacao_min != null ? ` · reação <b>${r.reacao_min} min</b>` : ''}`
+    + `${r.odd_dif_pct != null ? ` · odd pega <b>${r.odd_dif_pct > 0 ? '+' : ''}${String(r.odd_dif_pct).replace('.', ',')}%</b>` : ''}</div>`).join('')}
+    <label class="tips-chip" style="cursor:pointer"><input type="checkbox" ${tipsSoSemAposta ? 'checked' : ''} onchange="tipsSoSemAposta = this.checked; renderOperacao()"> só sem aposta</label></div>`;
+  const lista = tips.filter(t => !tipsSoSemAposta || t.status === 'sem_aposta').slice(0, 150);
+  html += `<table class="op-table"><thead><tr><th>Hora</th><th>Tip</th><th>No turno</th><th>Apostas</th><th>Status</th></tr></thead><tbody>${lista.map(t => {
+    const tipTxt = [t.evento, t.selecao].filter(Boolean).join(' · ') || (t.texto || '').slice(0, 80);
+    const det = [t.odd ? '@' + t.odd : '', t.unidades ? t.unidades + 'u' : '', t.mercado || '', t.ao_vivo ? 'ao vivo' : ''].filter(Boolean).join(' · ');
+    const aps = (t.apostas || []).map(a => `${esc(a.quem || '?')} +${a.min} min${a.odd ? ' @' + a.odd : ''}`).join('<br>');
+    const st = { apostada: 'apostada', sem_aposta: 'sem aposta', aberta: 'aguardando' }[t.status] || t.status;
+    const motivo = t.status === 'sem_aposta'
+      ? `<br><select class="tip-motivo" aria-label="Motivo de não apostar" onchange="salvarMotivoTip('${t.id}', this.value)"><option value="">motivo…</option>${MOTIVOS_TIP.map(m => `<option ${t.motivo === m ? 'selected' : ''}>${m}</option>`).join('')}</select>` : '';
+    return `<tr><td class="mono">${dataHoraBRT(t.postado_em)}<br><small style="color:var(--text3)">${esc(t.tipster || '')}</small></td>
+      <td class="tip-txt">${esc(tipTxt)}${det ? `<small>${esc(det)}</small>` : ''}</td>
+      <td>${esc(t.no_turno || 'fora do turno')}</td>
+      <td class="mono" style="font-size:12px">${aps || '—'}</td>
+      <td><span class="tip-st ${t.status}">${st}</span>${motivo}</td></tr>`;
+  }).join('')}</tbody></table>`;
+  return html;
+}
+async function salvarMotivoTip(id, motivo) {
+  try {
+    await opApi('PATCH', `tips?id=eq.${id}`, { motivo: motivo || null, motivo_por: currentUser, motivo_em: new Date().toISOString() }, 'return=minimal');
+    toast(motivo ? 'Motivo salvo' : 'Motivo removido', 'ok');
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
 }
 
 function cardOperador(o) {
