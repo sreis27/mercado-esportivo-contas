@@ -327,6 +327,23 @@ select.filter-sel:focus { border-color: var(--accent); }
 .op-form input:focus, .op-form select:focus { border-color: var(--accent); outline: none; }
 .op-acoes { display: flex; gap: 6px; justify-content: flex-end; }
 .op-flag { font-size: 11px; color: var(--warn); }
+.termo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.termo-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.termo-nota { font-family: var(--mono); font-size: 34px; font-weight: 700; line-height: 1.1; }
+.termo-nota small { font-size: 13px; font-weight: 400; color: var(--text3); }
+.termo-delta { font-family: var(--mono); font-size: 12px; color: var(--text2); white-space: nowrap; }
+.termo-barra { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; margin: 10px 0 12px; }
+.termo-barra > div { height: 100%; border-radius: 4px; }
+.termo-partes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.termo-parte { font-size: 11px; color: var(--text3); }
+.termo-parte b { display: block; font-family: var(--mono); font-size: 17px; margin-top: 2px; }
+.termo-det { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; font-size: 12px; color: var(--text2); }
+.termo-det summary { cursor: pointer; color: var(--text2); font-size: 12px; }
+.termo-det summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.termo-det p { margin: 7px 0 0; line-height: 1.5; }
+.termo-det p b { color: var(--text); font-weight: 500; }
+.termo-pesos { font-family: var(--sans); text-transform: none; letter-spacing: 0; color: var(--text3); }
+@media (max-width: 640px) { .termo-partes { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) {
   .op-wrap { padding: 16px; }
   .topbar { flex-wrap: wrap; height: auto; padding: 8px 16px; gap: 8px; }
@@ -1471,8 +1488,14 @@ async function renderOperacao() {
       <button class="op-btn" onclick="renderOperacao()">Atualizar</button>
     </div>`;
   root.innerHTML = head + '<div class="op-vazio">Carregando…</div>';
+  let prod = null, prodAnt = null;
   try {
-    opDados = await opApi('POST', 'rpc/painel_operadores', { p_de: de, p_ate: ate });
+    const [ade, aate] = periodoAnterior(de, ate);
+    [opDados, prod, prodAnt] = await Promise.all([
+      opApi('POST', 'rpc/painel_operadores', { p_de: de, p_ate: ate }),
+      isSamuel() ? opApi('POST', 'rpc/produtividade_operadores', { p_de: de, p_ate: ate }).catch(() => null) : null,
+      isSamuel() ? opApi('POST', 'rpc/produtividade_operadores', { p_de: ade, p_ate: aate }).catch(() => null) : null,
+    ]);
   } catch (e) {
     root.innerHTML = head + `<div class="op-vazio">Erro ao carregar: ${esc(e.message)}</div>`;
     return;
@@ -1482,9 +1505,51 @@ async function renderOperacao() {
   const regs = (opDados.registros || []).filter(r => isSamuel() || r.operador === currentUser);
 
   root.innerHTML = head
+    + (isSamuel() && prod ? secaoTermometro(prod, prodAnt) : '')
     + `<div class="op-grid">${visiveis.map(cardOperador).join('') || '<div class="op-vazio">Nada registrado neste período.</div>'}${isSamuel() && visiveis.length > 1 ? cardTotal(visiveis) : ''}</div>`
     + secaoEscala(opDados.escala || [], todos)
     + secaoRegistros(regs, todos);
+}
+
+function periodoAnterior(de, ate) {
+  if (opModo === 'mes') {
+    const [y, m] = de.split('-').map(Number);
+    const ini = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
+    return [ini, new Date(Date.UTC(y, m - 1, 0)).toISOString().slice(0, 10)];
+  }
+  return [addDias(de, -7), addDias(ate, -7)];
+}
+
+// ── TERMÔMETRO DE PRODUTIVIDADE (só o Samuel vê) ────────────────
+const corNota = n => n == null ? 'var(--text3)' : n >= 75 ? 'var(--accent)' : n >= 50 ? 'var(--warn)' : 'var(--danger)';
+const numBR = (v, casas = 0) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+function secaoTermometro(prod, prodAnt) {
+  const ops = prod.operadores || [];
+  if (!ops.length) return '';
+  const p = prod.pesos || { volume: 35, qualidade: 25, manutencao: 20, disciplina: 20 };
+  const ant = id => ((prodAnt && prodAnt.operadores) || []).find(o => o.id === id);
+  return `<div class="op-sec">Termômetro de produtividade <span class="termo-pesos">· volume ${p.volume} · qualidade ${p.qualidade} · manutenção ${p.manutencao} · disciplina ${p.disciplina}</span></div>
+    <div class="termo-grid">${ops.map(o => cardTermometro(o, ant(o.id))).join('')}</div>`;
+}
+function cardTermometro(o, a) {
+  const n = o.notas || {}, v = o.volume || {}, q = o.qualidade || {}, m = o.manutencao || {}, dsc = o.disciplina || {};
+  const temAnt = a && a.total != null && o.total != null;
+  const delta = temAnt ? o.total - a.total : null;
+  const deltaTxt = o.total == null ? '' : temAnt ? `${delta > 0 ? '▲ +' : delta < 0 ? '▼ ' : '= '}${delta} vs ${a.total} no período anterior` : 'sem período anterior';
+  const parte = (rot, k) => `<div class="termo-parte">${rot}<b style="color:${corNota(n[k])}">${n[k] == null ? '—' : n[k]}</b></div>`;
+  const pct = (x, y) => y ? Math.round(100 * x / y) + '%' : '—';
+  return `<div class="op-card">
+    <div class="op-card-top"><span class="op-nome">${esc(o.nome)}</span><span class="termo-delta">${deltaTxt}</span></div>
+    <div class="termo-top"><div class="termo-nota" style="color:${corNota(o.total)}">${o.total == null ? '—' : o.total} <small>/ 100</small></div></div>
+    <div class="termo-barra" role="meter" aria-label="Nota de produtividade" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${o.total ?? 0}"><div style="width:${o.total || 0}%;background:${corNota(o.total)}"></div></div>
+    <div class="termo-partes">${parte('Volume', 'volume')}${parte('Qualidade', 'qualidade')}${parte('Manutenção', 'manutencao')}${parte('Disciplina', 'disciplina')}</div>
+    <details class="termo-det"><summary>De onde vem a nota</summary>
+      <p><b>Volume</b>: ${plural(v.apostas || 0, 'aposta', 'apostas')}${v.por_hora != null ? ` · ${numBR(v.por_hora, 1)}/h` : ''} · ${numBR(v.unidades, 2)}u · no horário dele entraram ${v.operacao_turno || 0} na operação, ${v.proprias_turno || 0} dele (${pct(v.proprias_turno, v.operacao_turno)})</p>
+      <p><b>Qualidade</b>: ${q.falhas || 0} de ${q.prints || 0} prints com falha da legenda/print (sem tipster, casa ou stake; sem aposta; repetido) · ${q.corrigidas_por_outro || 0} de ${q.apostas || 0} apostas tu precisou corrigir</p>
+      <p><b>Manutenção</b>: ${m.avisos ? `${m.avisos_resolvidos} de ${m.avisos} avisos do bot resolvidos por ele${m.min_resolver != null ? ` (mediana ${m.min_resolver} min)` : ''}` : 'nenhum aviso do bot'} · saldo atualizado em ${m.turnos_com_saldo || 0} de ${plural(m.turnos || 0, 'turno', 'turnos')} · ${m.correcoes_feitas || 0} correções e ${m.resultados || 0} resultados lançados no dash · ${m.saldos || 0} saldos · ${m.apagadas || 0} apagadas</p>
+      <p><b>Disciplina</b>: ${fmtDur(dsc.horas)} de ${fmtDur(dsc.horas_previstas)} previstas · atividade ${dsc.atividade_pct == null ? '—' : dsc.atividade_pct + '%'} · ${plural(dsc.faltas || 0, 'falta', 'faltas')} · ${plural(dsc.saidas_esquecidas || 0, 'saída esquecida', 'saídas esquecidas')} · ${plural(dsc.prints_fora_registro || 0, 'print fora do ponto', 'prints fora do ponto')}</p>
+    </details>
+  </div>`;
 }
 
 function cardOperador(o) {
