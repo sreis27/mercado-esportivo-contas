@@ -1607,7 +1607,8 @@ function cardOperador(o) {
     ['Prints', o.prints ? `${o.prints} · ` + ([[o.prints_aviso, 'com aviso'], [o.prints_sem_aposta, 'sem aposta'], [o.prints_erro, 'erro'], [o.prints_repetido, 'repetido']]
       .filter(([n]) => +n).map(([n, t]) => `${n} ${t}`).join(' · ') || 'todos ok') : '0'],
     ['Correções pelo bot', o.corrigidos],
-    ['Apostas registradas', o.entradas],
+    ['Apostas no horário', o.entradas_turno == null ? o.entradas
+      : `${o.entradas_turno}${o.horas > 0 ? ` · ${numBR(o.entradas_turno / o.horas, 1)}/h` : ''}${o.entradas_fora ? ` · +${o.entradas_fora} fora do horário` : ''}`],
   ];
   let html = `<div class="op-card">
     <div class="op-card-top"><span class="op-nome">${esc(o.nome)}</span>${o.abertos ? '<span class="op-aberto">entrada aberta</span>' : ''}</div>
