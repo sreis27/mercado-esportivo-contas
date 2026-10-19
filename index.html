@@ -324,6 +324,10 @@ select.filter-sel:focus { border-color: var(--accent); }
 .op-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text3); }
 .op-form input, .op-form select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 9px; font: 13px var(--sans); }
 .op-form input[type=number] { width: 78px; }
+.esc-op { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; flex-basis: 100%; }
+.esc-op .esc-nome { min-width: 64px; font-size: 13px; color: var(--text); padding-bottom: 8px; }
+.esc-quem { display: block; white-space: nowrap; }
+.esc-quem + .esc-quem { margin-top: 3px; }
 .op-form input:focus, .op-form select:focus { border-color: var(--accent); outline: none; }
 .op-acoes { display: flex; gap: 6px; justify-content: flex-end; }
 .op-flag { font-size: 11px; color: var(--warn); }
@@ -1652,8 +1656,12 @@ function secaoEscala(escala, ops) {
   const dias = Object.keys(porDia).sort();
   const linhas = dias.map(d => {
     const es = porDia[d];
-    const janela = [...new Set(es.map(e => `${e.janela_inicio}–${e.janela_fim}`))].join(' / ');
-    const quem = es.map(e => `${esc(e.operador)} ${fmtDur(e.horas_previstas)}`).join(' · ');
+    // Mesma janela pra todos: mostra uma vez. Janelas diferentes: cada operador com a sua.
+    const janelas = [...new Set(es.map(e => `${e.janela_inicio}–${e.janela_fim}`))];
+    const mesma = janelas.length === 1;
+    const janela = mesma ? janelas[0] : '<span style="color:var(--text3)">por operador</span>';
+    const quem = mesma ? es.map(e => `${esc(e.operador)} ${fmtDur(e.horas_previstas)}`).join(' · ')
+      : es.map(e => `<span class="esc-quem">${esc(e.operador)} ${e.janela_inicio}–${e.janela_fim} (${fmtDur(e.horas_previstas)})</span>`).join('');
     const obs = es.map(e => e.obs).filter(Boolean).join(' · ');
     return `<tr><td class="mono">${diaBR(d)}</td><td class="mono">${janela}</td><td>${quem}</td><td style="color:var(--text2)">${esc(obs)}</td>
       ${isSamuel() ? `<td><div class="op-acoes"><button class="op-btn" onclick="editarDiaEscala('${d}')">Editar</button><button class="op-btn perigo" onclick="apagarDiaEscala('${d}')">Tirar</button></div></td>` : ''}</tr>`;
@@ -1665,28 +1673,48 @@ function secaoEscala(escala, ops) {
     : '<div class="op-vazio">Sem escala neste período.</div>';
   if (isSamuel()) {
     const operadores = ops.filter(o => o.nome !== 'Samuel');
+    // Cada operador com a sua janela; horas = tamanho da janela ao mexer nela (dá pra baixar depois)
     html += `<form class="op-form" id="form-escala" onsubmit="salvarDiaEscala(event)">
       <label>Dia<input type="date" id="esc-data" required></label>
-      <label>Janela de<input type="time" id="esc-ini" value="18:00" required></label>
-      <label>até<input type="time" id="esc-fim" value="22:00" required></label>
-      ${operadores.map(o => `<label>${esc(o.nome)} (h)<input type="number" min="0" max="16" step="0.5" data-op="${o.id}" class="esc-horas" value="0"></label>`).join('')}
       <label style="flex:1;min-width:140px">Obs<input type="text" id="esc-obs" placeholder="opcional"></label>
+      ${operadores.map(o => `<div class="esc-op" data-op="${o.id}"><span class="esc-nome">${esc(o.nome)}</span>
+        <label>de<input type="time" class="esc-ini" data-op="${o.id}" value="18:00" onchange="escJanelaMudou('${o.id}')"></label>
+        <label>até<input type="time" class="esc-fim" data-op="${o.id}" value="22:00" onchange="escJanelaMudou('${o.id}')"></label>
+        <label>horas<input type="number" min="0" max="16" step="0.5" class="esc-horas" data-op="${o.id}" data-len="4" value="0"></label>
+      </div>`).join('')}
       <button class="op-btn on" type="submit">Salvar dia</button>
     </form>`;
   }
   return html;
 }
 
+function horasDaJanela(ini, fim) {
+  if (!ini || !fim || fim <= ini) return 0;
+  return (Date.parse(`2000-01-01T${fim}`) - Date.parse(`2000-01-01T${ini}`)) / 3600000;
+}
+const escCampo = (cls, op) => document.querySelector(`#form-escala .${cls}[data-op="${op}"]`);
+
+// Mexeu na janela de um operador: horas acompanham (se estavam zeradas ou na janela cheia)
+function escJanelaMudou(op) {
+  const h = escCampo('esc-horas', op);
+  const novo = horasDaJanela(escCampo('esc-ini', op).value, escCampo('esc-fim', op).value);
+  const atual = parseFloat(h.value) || 0;
+  if (novo > 0 && (atual === 0 || atual === parseFloat(h.dataset.len))) h.value = novo;
+  h.dataset.len = novo;
+}
+
 function editarDiaEscala(d) {
   const es = (opDados.escala || []).filter(e => e.data === d);
   if (!es.length) return;
   document.getElementById('esc-data').value = d;
-  document.getElementById('esc-ini').value = es[0].janela_inicio;
-  document.getElementById('esc-fim').value = es[0].janela_fim;
   document.getElementById('esc-obs').value = es.find(e => e.obs)?.obs || '';
-  document.querySelectorAll('.esc-horas').forEach(inp => {
-    const e = es.find(x => x.operador_id === inp.dataset.op);
-    inp.value = e ? e.horas_previstas : 0;
+  document.querySelectorAll('#form-escala .esc-op').forEach(div => {
+    const op = div.dataset.op, e = es.find(x => x.operador_id === op) || null;
+    const ref = e || es[0];   // fora do dia: sugere a janela de quem está
+    escCampo('esc-ini', op).value = ref.janela_inicio;
+    escCampo('esc-fim', op).value = ref.janela_fim;
+    escCampo('esc-horas', op).value = e ? e.horas_previstas : 0;
+    escCampo('esc-horas', op).dataset.len = horasDaJanela(ref.janela_inicio, ref.janela_fim);
   });
   document.getElementById('form-escala').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -1694,18 +1722,19 @@ function editarDiaEscala(d) {
 async function salvarDiaEscala(ev) {
   ev.preventDefault();
   const data = document.getElementById('esc-data').value;
-  const ini = document.getElementById('esc-ini').value, fim = document.getElementById('esc-fim').value;
   const obs = document.getElementById('esc-obs').value.trim() || null;
-  if (!data || !ini || !fim) return;
-  if (fim <= ini) { toast('O fim da janela tem que ser depois do início', 'err'); return; }
-  const horasJanela = (Date.parse(`2000-01-01T${fim}`) - Date.parse(`2000-01-01T${ini}`)) / 3600000;
+  if (!data) return;
   const linhas = [], zerar = [];
-  document.querySelectorAll('.esc-horas').forEach(inp => {
-    const h = parseFloat(inp.value) || 0;
-    if (h > 0) linhas.push({ data, operador_id: inp.dataset.op, janela_inicio: ini, janela_fim: fim, horas_previstas: h, obs, criado_por: currentUser });
-    else zerar.push(inp.dataset.op);
-  });
-  if (linhas.some(l => l.horas_previstas > horasJanela)) { toast(`Mais horas que a janela (${fmtDur(horasJanela)})`, 'err'); return; }
+  for (const div of document.querySelectorAll('#form-escala .esc-op')) {
+    const op = div.dataset.op, nome = div.querySelector('.esc-nome').textContent;
+    const ini = escCampo('esc-ini', op).value, fim = escCampo('esc-fim', op).value;
+    const h = parseFloat(escCampo('esc-horas', op).value) || 0;
+    if (h <= 0) { zerar.push(op); continue; }
+    if (!ini || !fim || fim <= ini) { toast(`${nome}: o fim da janela tem que ser depois do início`, 'err'); return; }
+    const hj = horasDaJanela(ini, fim);
+    if (h > hj) { toast(`${nome}: mais horas que a janela (${fmtDur(hj)})`, 'err'); return; }
+    linhas.push({ data, operador_id: op, janela_inicio: ini, janela_fim: fim, horas_previstas: h, obs, criado_por: currentUser });
+  }
   try {
     if (linhas.length) await opApi('POST', 'escala?on_conflict=data,operador_id', linhas, 'resolution=merge-duplicates,return=minimal');
     for (const op of zerar) await opApi('DELETE', `escala?data=eq.${data}&operador_id=eq.${op}`);
