@@ -1629,8 +1629,8 @@ function cardOperador(o) {
     <div class="op-linha"><span>Prints fora do registro</span><b>${o.prints_fora_registro}</b></div>
     <div class="op-linha"><span>Saídas fechadas pelo bot</span><b>${o.fechamentos_auto}</b></div>
     <div class="op-linha"><span>Horas × ${brlOp(o.valor_hora)}</span><b>${brlOp(o.custo_horas)}</b></div>
-    <div class="op-linha"><span>Comissão ${String(o.comissao_pct).replace('.', ',')}% do P/L dele (${brlOp(o.faturamento_r)})</span><b>${brlOp(o.comissao_r)}</b></div>
-    ${(+o.faturamento_usd || +o.comissao_usd) ? `<div class="op-linha"><span>Comissão em dólar (P/L dele ${usdOp(o.faturamento_usd)})</span><b>${usdOp(o.comissao_usd)}</b></div>` : ''}
+    <div class="op-linha"><span>Comissão ${String(o.comissao_pct).replace('.', ',')}% do P/L dos operadores (${brlOp(o.faturamento_r)})</span><b>${brlOp(o.comissao_r)}</b></div>
+    ${(+o.faturamento_usd || +o.comissao_usd) ? `<div class="op-linha"><span>Comissão em dólar (P/L dos operadores ${usdOp(o.faturamento_usd)})</span><b>${usdOp(o.comissao_usd)}</b></div>` : ''}
     <div class="op-linha total"><span>Total em reais</span><b>${brlOp(o.total_r)}</b></div>`;
   }
   return html + '</div>';
